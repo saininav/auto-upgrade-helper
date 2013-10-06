@@ -161,6 +161,28 @@ def create_work_branch():
 
     return 0
 
+def move_to_next_ver():
+    global bb_env
+
+    # move the recipe(s) to the next version
+    recipe_dir = os.path.dirname(bb_env['FILE'])
+    os.chdir(recipe_dir)
+    if bb_env['SRC_URI'].find("ftp://") == 0 or  \
+       bb_env['SRC_URI'].find("http://") == 0 or \
+       bb_env['SRC_URI'].find("https://") == 0:
+        for path in os.listdir(recipe_dir):
+            if path.find(bb_env['PN'] + '-' + bb_env['PKGV']) != -1 or \
+               path.find(bb_env['PN'] + '_' + bb_env['PKGV']) != -1:
+                new_path=re.sub(bb_env['PKGV'], new_ver, path)
+                ret = git_cmd("mv " + path + " " + new_path)
+                if ret < 0:
+                    E(" Rename operation failed!")
+                    return -1
+    else:
+        return -1
+
+    return 0
+
 def upgrade(pkg, new_ver=None):
     global bb_env
 
@@ -182,17 +204,6 @@ def upgrade(pkg, new_ver=None):
         E(" Failed to fetch the original version of the package: %s!" % bb_env['PKGV'])
         return -1
 
-    # move the recipe(s) to the next version
-    recipe_dir = os.path.dirname(bb_env['FILE'])
-    os.chdir(recipe_dir)
-    for path in os.listdir(recipe_dir):
-        if path.find(bb_env['PN'] + '-' + bb_env['PKGV']) != -1 or \
-           path.find(bb_env['PN'] + '_' + bb_env['PKGV']) != -1:
-            new_path=re.sub(bb_env['PKGV'], new_ver, path)
-            ret = git_cmd("mv " + path + " " + new_path)
-            if ret < 0:
-                E(" Rename operation failed!")
-                return -1
 
     # fetch the new version. This MUST fail
     if bb_fetch(pkg) != -1:
@@ -200,6 +211,7 @@ def upgrade(pkg, new_ver=None):
         return -1
 
     # replace md5sum and sha256sum in recipe
+    move_to_next_ver()
 
     return 0
 
