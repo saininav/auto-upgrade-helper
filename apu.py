@@ -48,8 +48,11 @@ class Bitbake():
     def __init__(self, build_dir):
         self.build_dir = build_dir
 
-    def _cmd(self, recipe, options=None):
-        cmd = "bitbake "
+    def _cmd(self, recipe, options=None, env_var=None):
+        cmd = ""
+        if env_var is not None:
+            cmd += env_var + " "
+        cmd += "bitbake "
         if options is not None:
             cmd += options + " "
 
@@ -72,8 +75,11 @@ class Bitbake():
     def checkpkg(self, recipe):
         return self._cmd(recipe, "-c checkpkg")
 
-    def complete(self, recipe):
-        return self._cmd(recipe)
+    def cleanall(self, recipe):
+        return self._cmd(recipe, "-c cleanall")
+
+    def complete(self, recipe, machine):
+        return self._cmd(recipe, env_var="MACHINE=" + machine)
 
 
 class Package():
@@ -82,7 +88,7 @@ class Package():
         self.to_ver = to_ver
         self.bb = Bitbake(get_build_dir())
 
-    def env(self):
+    def get_env(self):
         I(" %s: Fetching package environment..." % self.pn)
 
         err, stdout, stderr = self.bb.env(self.pn)
@@ -136,6 +142,7 @@ class Package():
     def last_executed_task(self):
         with open(os.path.realpath(self.env["T"] + "/log.task_order")) as task_order:
             last_line = list(task_order)[-1]
+            D(" %s: last line in log.task_order is %s" % (self.pn, last_line))
             m = re.match("^(.*) \(.*\): (.*)$", last_line)
             if m:
                 return (m.group(1), m.group(2))
@@ -147,22 +154,24 @@ class Package():
         if fetch_log is None:
             E(" %s: Could not get the fetch log name!" % self.pn)
             return -1
+        D(" %s: fetch log is: %s" % (self.pn, fetch_log))
 
         md5sum_line = None
         sha256sum_line = None
         with open(os.path.realpath(self.env["T"] + "/" + fetch_log)) as log:
             for line in log:
-                print("%s" % line)
                 if line.startswith("SRC_URI[md5sum]"):
                     md5sum_line = line
                 elif line.startswith("SRC_URI[sha256sum]"):
                     sha256sum_line = line
+                elif line.startswith("PR=") or line.startswith("PR ="):
+                    pass
 
         if md5sum_line is None or sha256sum_line is None:
             E(" %s: Could not extract the new checksums from log file!" % self.pn)
             return -1
 
-        with open(self.env['FILE'] + ".tmp", "rw+") as temp_recipe:
+        with open(self.env['FILE'] + ".tmp", "w+") as temp_recipe:
             with open(self.env['FILE']) as recipe:
                 for line in recipe:
                     if line.startswith("SRC_URI[md5sum]"):
@@ -172,6 +181,17 @@ class Package():
                     else:
                         temp_recipe.write(line)
 
+        os.rename(self.env['FILE'] + ".tmp", self.env['FILE'])
+
+        return 0
+
+    def check_error(self):
+        task, log = self.last_executed_task()
+        if log is None:
+            E(" %s: Could not get last executed task!" % self.pn)
+            return -1
+
+        W(" %s: failed task was %s" % (self.pn, task))
         return 0
 
     def upgrade(self):
@@ -184,7 +204,7 @@ class Package():
 
         I(" %s: Upgrading to version %s ..." % (self.pn, self.to_ver))
 
-        self.env = self.env()
+        self.env = self.get_env()
         if self.env is None:
             E(" %s: Could not fetch package environment!" % self.pn)
             return -1
@@ -211,6 +231,17 @@ class Package():
         if self.rename_files() == -1:
             return -1
 
+        self.env = None
+        self.env = self.get_env()
+        if self.env is None:
+            E(" %s: Could not fetch NEW package environment!" % self.pn)
+            return -1
+
+        I(" %s: Clean all ..." % self.pn)
+        if self.bb.cleanall(self.pn) == (-1,):
+            E(" %s: Error executing clean all!" % self.pn)
+            return -1
+
         I(" %s: Fetch new package (old checksums) ..." % self.pn)
         if self.bb.fetch(self.pn) == (0,):
             E(" %s: Fetching new package (old checksums) succeeded! Should've failed!" % self.pn)
@@ -220,6 +251,12 @@ class Package():
         if self.replace_checksums() == -1:
             E(" %s: Could not change recipe!" % self.pn)
             return -1
+
+        for machine in ["qemux86", "qemux86-64", "qemuarm", "qemumips", "qemuppc"]:
+            I(" %s: compiling for %s ..." % (self.pn, machine))
+            if self.bb.complete(self.pn, machine) == (-1,):
+                if self.check_error() == -1:
+                    return -1
 
 
 #[lp]class List(Package):
