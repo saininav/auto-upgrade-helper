@@ -49,6 +49,12 @@ class Git():
     def create_patch(self, out_dir):
         return self._cmd("format-patch -M10 -1 -o " + out_dir)
 
+    def reset_hard(self, no_of_patches=0):
+        if no_of_patches == 0:
+            return self._cmd("reset --hard HEAD")
+        else:
+            return self._cmd("reset --hard HEAD~" + str(no_of_patches))
+
 
 class Bitbake():
     def __init__(self, build_dir):
@@ -157,16 +163,11 @@ class Package():
 
         return (None, None)
 
-    def replace_checksums(self):
-        task, fetch_log = self.last_executed_task()
-        if fetch_log is None:
-            E(" %s: Could not get the fetch log name!" % self.pn)
-            return -1
-        D(" %s: fetch log is: %s" % (self.pn, fetch_log))
-
+    def replace_checksums(self, fetch_log):
+        I(" %s: Update recipe checksums, remove PR, etc ..." % self.pn)
         md5sum_line = None
         sha256sum_line = None
-        with open(os.path.realpath(self.env["T"] + "/" + fetch_log)) as log:
+        with open(os.path.realpath(fetch_log)) as log:
             for line in log:
                 if line.startswith("SRC_URI[md5sum]"):
                     md5sum_line = line
@@ -276,63 +277,91 @@ class Package():
         return -1
 
     def create_diff_file(self, file, old_md5, new_md5):
+        old_file = os.path.join(self.old_env['S'], file)
+        new_file = os.path.join(self.env['S'], file)
+        cmd = "diff -Nup " + old_file + " " + new_file + " > " + \
+              os.path.join(self.workdir, file + ".diff")
+
+        try:
+            stdout, stderr = bb.process.run(cmd)
+        except bb.process.ExecutionError:
+            pass
+
+        with open(os.path.join(self.workdir, "license_checksums.txt"), "w+") as f:
+            f.write("old checksum = %s\n" % old_md5)
+            f.write("new_checksum = %s\n" % new_md5)
+
         return 0
 
-    # Return: -2 - license issue
-    #         -1 - if any error occurs
+    # Return: -3 - compilation error
+    #         -2 - license error
+    #         -1 - if any other error occurs
     #          0 - no error, move on to next machine
     #          1 - backported patches removed, give it another shot
-    def handle_error(self, out, machine):
+    #          2 - do_fetch failed but we replaced checksums, removed PR, etc.
+    def handle_bb_error(self, err, stdout, stderr):
+        if err == 0:
+            return 0
+
         failed_task = None
         failed_log = None
-        license_issue = False
+        machine = None
         ret = -1
-        for line in out.split("\n"):
-            D(" %s: %s" % (self.pn, line))
-            if not line.startswith("ERROR:"):
-                continue
 
-            if line.startswith("ERROR: Logfile of failure stored in:"):
-                failed_log = line.split(":")[2].strip()
-                m = re.match(".*/log\.(.*)\.[0-9]*", failed_log)
-                if m is not None:
-                    failed_task = m.group(1)
-            elif line.find(self.pn + " was skipped: incompatible with host") != -1:
-                W(" %s: compilation for %s failed: incompatible host" % (self.pn, machine))
+        for line in stdout.split("\n"):
+            D(" %s: %s" % (self.pn, line))
+
+            machine_match = re.match("MACHINE[\t ]+= *\"(.*)\"$", line)
+            task_log_match = re.match("ERROR: Logfile of failure stored in: (.*log\.(.*)\.[0-9]*)", line)
+            incomp_host = re.match("ERROR: " + self.pn + " was skipped: incompatible with host (.*) \(.*$", line)
+
+            if task_log_match is not None:
+                failed_log = task_log_match.group(1)
+                failed_task = task_log_match.group(2)
+            elif machine_match is not None:
+                machine = machine_match.group(1)
+            elif incomp_host is not None:
+                W(" %s: compilation failed: incompatible host %s" % (self.pn, incomp_host.group(1)))
                 return 0
 
+        if failed_task == "do_fetch":
+            if self.replace_checksums(failed_log) == 0:
+                return 2
+            ret = -1
         if failed_task == "do_patch":
             if self.remove_backported() == 0:
                 W(" %s: task %s failed, but removed some backported patches! Trying again..." % (self.pn, failed_task))
                 return 1
         elif failed_task == "do_compile":
-            # we return 0 so that compilation is done for the other machines
-            # too. Compilation may fail only for some architectures
-            ret = 0
+            ret = -3
         elif failed_task == "do_configure":
             # check if it's a license issue
+            license_file = None
             with open(failed_log) as log:
                 for line in log:
                     if not line.startswith("ERROR:"):
                         continue
 
-                    m_old = re.match("ERROR: " + self.pn + ": md5 data is not matching for file://(.*);md5=(.*)$", line)
+                    m_old = re.match("ERROR: " + self.pn + ": md5 data is not matching for file://([^;]*);md5=(.*)$", line)
+                    m_old_lines = re.match("ERROR: " + self.pn + ": md5 data is not matching for file://([^;]*);beginline=[0-9]*;endline=[0-9]*;md5=(.*)$", line)
                     m_new = re.match("ERROR: " + self.pn + ": The new md5 checksum is (.*)", line)
                     if m_old is not None:
-                        license_file = m.group(1)
-                        old_md5 = m.group(2)
-                        license_issue = True
+                        license_file = m_old.group(1)
+                        old_md5 = m_old.group(2)
+                    elif m_old_lines is not None:
+                        license_file = m_old_lines.group(1)
+                        old_md5 = m_old_lines.group(2)
                     elif m_new is not None:
-                        new_md5 = m.group(1)
+                        new_md5 = m_new.group(1)
 
-            if license_issue:
-                E(" %s: task %s failed due to license issue, copying log to %s" %
-                  (self.pn, failed_task, self.workdir))
+            if license_file is not None:
                 self.create_diff_file(license_file, old_md5, new_md5)
                 return -2
 
         W(" %s: task %s failed, copying log to %s" % (self.pn, failed_task, self.workdir))
         os.symlink(failed_log, os.path.join(self.workdir, machine + "_log." + failed_task))
+        with open(os.path.join(self.workdir, "bitbake.log")) as log:
+            log.write(stdout)
 
         return ret
 
@@ -347,7 +376,7 @@ class Package():
                 os.remove(os.path.join(self.workdir, f))
 
         # we need the package environment here, in order to determine where the
-        # recipe is located
+        # recipe is located. This helps us to detect the git repo too.
         self.env = self.get_env()
         if self.env is None:
             E(" %s: Could not fetch package environment!" % self.pn)
@@ -363,7 +392,7 @@ class Package():
             return -1
 
         # we need the environment again, to get the current version of the
-        # recipe, in case stashing changed the version
+        # recipe, in case stashing changed the version back
         self.env = self.get_env()
         if self.env is None:
             E(" %s: Could not fetch package environment!" % self.pn)
@@ -392,9 +421,8 @@ class Package():
             return -1
 
         I(" %s: Try to fetch & unpack original package ..." % self.pn)
-        err, stdout = self.bb.unpack(self.pn)
-        if self.bb.unpack(self.pn) == (-1,):
-            E(" %s: Fetching original package failed!" % self.pn)
+        if self.handle_bb_error(*self.bb.unpack(self.pn)) == -1:
+            E(" %s: Fetching/unpacking original package failed!" % self.pn)
             return -1
 
         I(" %s: Renaming files ..." % self.pn)
@@ -402,27 +430,28 @@ class Package():
             E(" %s: Rename operation failed!" % self.pn)
             return -1
 
-        # save old environment
+        # save old environment, we'll use it for finding old source code for
+        # license diffs, etc.
         self.old_env = self.env
         # get the new environment
         self.env = self.get_env()
         if self.env is None:
-            E(" %s: Could not fetch NEW package environment!" % self.pn)
+            E(" %s: Could not fetch package environment!" % self.pn)
             return -1
 
         I(" %s: Clean all ..." % self.pn)
-        if self.bb.cleanall(self.pn) == (-1,):
+        if self.handle_bb_error(*self.bb.cleanall(self.pn)) == -1:
             E(" %s: Error executing clean all!" % self.pn)
             return -1
 
         I(" %s: Fetch new package (old checksums) ..." % self.pn)
-        if self.bb.fetch(self.pn) == (0,):
+        if self.handle_bb_error(*self.bb.fetch(self.pn)) != 2:
             E(" %s: Fetching new package (old checksums) succeeded! Should've failed!" % self.pn)
             return -1
 
-        I(" %s: Update recipe checksums, remove PR, etc ..." % self.pn)
-        if self.replace_checksums() == -1:
-            E(" %s: Could not change recipe!" % self.pn)
+        self.env = self.get_env()
+        if self.env is None:
+            E(" %s: Could not fetch NEW package environment!" % self.pn)
             return -1
 
         bitbake_failed = False
@@ -436,25 +465,28 @@ class Package():
                 while retry:
                     retry = False
                     I(" %s: compiling for %s ..." % (self.pn, machine))
-                    err, stdout, stderr = self.bb.complete(self.pn, machine)
-                    if err == -1:
-                        handler_code = self.handle_error(stdout, machine)
-                        if handler_code == 1:
-                            retry = True
-                            continue
-                        elif handler_code == -1:
-                            # we don't continue to the next machine
-                            abort = True
-                            bitbake_failed = True
-
-        if bitbake_failed:
-            return -1
+                    err = self.handle_bb_error(*self.bb.complete(self.pn, machine))
+                    if err == 1:
+                        retry = True
+                        continue
+                    elif err == -1 or err == -2:
+                        # we don't continue to the next machine
+                        abort = True
+                        bitbake_failed = True
+                    elif err == -3:
+                        bitbake_failed = True
 
         I(" %s: Commit changes ..." % self.pn)
         self.git.commit(self.commit_msg)
         I(" %s: Save patch in %s." % (self.pn, self.workdir))
         self.git.create_patch(self.workdir)
 
+#[lp]        if bitbake_failed:
+#[lp]            I(" %s: Remove patch from git, since it failed ..." % self.pn)
+#[lp]            self.git.reset_hard(1)
+#[lp]            return -1
+
+        return 0
 
 #[lp]class List(Package):
 #[lp]    def __init(self, package_list):
