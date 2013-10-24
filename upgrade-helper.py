@@ -186,7 +186,7 @@ class Bitbake(object):
 
     def checkpkg(self, recipe):
         if recipe == "universe":
-            return self._cmd(recipe, "-c checkpkg", options="-k")
+            return self._cmd(recipe, "-c checkpkg -k")
         else:
             return self._cmd(recipe, "-c checkpkg")
 
@@ -906,16 +906,19 @@ class Universe(Packages, Email):
         return 0
 
     def prepare(self):
-        if "clean_sstate" in settings and settings["clean_sstate"] == "yes":
-            I("Removing sstate directory ...")
+        if "clean_sstate" in settings and settings["clean_sstate"] == "yes" and \
+                os.path.exists(os.path.join(get_build_dir(), "sstate-cache")):
+            I(" Removing sstate directory ...")
             shutil.rmtree(os.path.join(get_build_dir(), "sstate-cache"))
-        if "clean_tmp" in settings and settings["clean_tmp"] == "yes":
-            I("Removing tmp directory ...")
+        if "clean_tmp" in settings and settings["clean_tmp"] == "yes" and \
+                os.path.exists(os.path.join(get_build_dir(), "tmp")):
+            I(" Removing tmp directory ...")
             shutil.rmtree(os.path.join(get_build_dir(), "tmp"))
 
         return 0
 
     def get_pkgs_to_upgrade(self):
+        I(" Fetching upstream versions for all packages ...")
         err = self.bb.checkpkg("universe")
         if err == -1:
             return self.ERR_OTHER
