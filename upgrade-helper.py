@@ -124,8 +124,11 @@ class Git(object):
     def stash(self):
         return self._cmd("stash")
 
-    def commit(self, commit_message):
-        return self._cmd("commit -a -s -m \"" + commit_message + "\"")
+    def commit(self, commit_message, author=None):
+        if author is None:
+            return self._cmd("commit -a -s -m \"" + commit_message + "\"")
+        else:
+            return self._cmd("commit -a --author=\"" + author + "\" -m \"" + commit_message + "\"")
 
     def create_patch(self, out_dir):
         return self._cmd("format-patch -M10 -1 -o " + out_dir)
@@ -150,6 +153,12 @@ class Git(object):
             return self._cmd("reset --hard HEAD")
         else:
             return self._cmd("reset --hard HEAD~" + str(no_of_patches))
+
+    def clean_untracked(self):
+        return self._cmd("clean -fd")
+
+    def last_commit(self, branch_name):
+        return self._cmd("log --pretty=format:\"%H\" -1" + branch_name)
 
 
 class Bitbake(object):
@@ -192,6 +201,9 @@ class Bitbake(object):
 
     def cleanall(self, recipe):
         return self._cmd(recipe, "-c cleanall")
+
+    def cleansstate(self, recipe):
+        return self._cmd(recipe, "-c cleansstate")
 
     def complete(self, recipe, machine):
         return self._cmd(recipe, env_var="MACHINE=" + machine)
@@ -300,10 +312,10 @@ class Package(object):
             (self.cleanall_package, "Clean all ...",
                                     "Clean all failed!"),
             (self.fetch_package, "Fetch new package (old checksums) ...",
-                                 "Fetching new package failed! Either it succeeded \
-                                 when it should've failed or it failed but no \
-                                 checksums were detected in the log."),
-            (self.compile_package, None, "Compilation failed for one or more machines!")
+                                 "Fetching new package failed! Either it succeeded "
+                                 "when it should've failed or it failed but no "
+                                 "checksums were detected in the log."),
+            (self.compile_package, None, "Compilation failed!")
         ]
 
         super(Package, self).__init__()
@@ -313,7 +325,7 @@ class Package(object):
         if err == -1:
             return None
 
-        assignment = re.compile("^([^ \t]*)=(.*)")
+        assignment = re.compile("^([^ \t=]*)=(.*)")
         bb_env = dict()
         for line in stdout.split('\n'):
             m = assignment.match(line)
@@ -384,19 +396,26 @@ class Package(object):
 
     def rename_files(self):
         # change PR before renaming
-        with open(self.env['FILE'] + ".tmp", "w+") as temp_recipe:
-            with open(self.env['FILE']) as recipe:
-                for line in recipe:
-                    if line.startswith("PR=") or line.startswith("PR ="):
-                        continue
-                    else:
-                        temp_recipe.write(line)
-        os.rename(self.env['FILE'] + ".tmp", self.env['FILE'])
+        for f in os.listdir(self.recipe_dir):
+            full_path_f = os.path.join(self.recipe_dir, f)
+            if os.path.isfile(full_path_f) and \
+                    ((f.find(self.env['PN']) == 0 and
+                      f.find(self.env['PKGV']) != -1 and
+                      f.find(".bb") != -1) or
+                     (f.find(self.env['PN']) == 0 and
+                      f.find(".inc") != -1)):
+                with open(full_path_f + ".tmp", "w+") as temp_recipe:
+                    with open(full_path_f) as recipe:
+                        for line in recipe:
+                            if line.startswith("PR=") or line.startswith("PR ="):
+                                continue
+                            else:
+                                temp_recipe.write(line)
+                os.rename(full_path_f + ".tmp", full_path_f)
 
         # rename recipes
         for path in os.listdir(self.recipe_dir):
-            if path.find(self.env['PN'] + '-' + self.env['PKGV']) != -1 or \
-                    path.find(self.env['PN'] + '_' + self.env['PKGV']) != -1:
+            if path.find(self.env['PN']) == 0 and path.find(self.env['PKGV']) != -1:
                 new_path = re.sub(self.env['PKGV'], self.to_ver, path)
                 if self.git.mv(os.path.join(self.recipe_dir, path),
                                os.path.join(self.recipe_dir, new_path)) == (-1,):
@@ -412,7 +431,7 @@ class Package(object):
         old_file = os.path.join(self.old_env['S'], file)
         new_file = os.path.join(self.env['S'], file)
         cmd = "diff -Nup " + old_file + " " + new_file + " > " + \
-              os.path.join(self.workdir, file + ".diff")
+              os.path.join(self.workdir, os.path.basename(file + ".diff"))
 
         try:
             stdout, stderr = bb.process.run(cmd)
@@ -423,15 +442,24 @@ class Package(object):
             f.write("old checksum = %s\n" % old_md5)
             f.write("new_checksum = %s\n" % new_md5)
 
-        with open(self.env['FILE'] + ".tmp", "w+") as temp_recipe:
-            with open(self.env['FILE']) as recipe:
-                for line in recipe:
-                    m = re.match("(.*)" + old_md5 + "(.*)", line)
-                    if m is not None:
-                        temp_recipe.write(m.group(1) + new_md5 + m.group(2))
-                    else:
-                        temp_recipe.write(line)
-        os.rename(self.env['FILE'] + ".tmp", self.env['FILE'])
+        for f in os.listdir(self.recipe_dir):
+            full_path_f = os.path.join(self.recipe_dir, f)
+            if os.path.isfile(full_path_f) and \
+                    ((f.find(self.env['PN']) == 0 and
+                      f.find(self.env['PKGV']) != -1 and
+                      f.find(".bb") != -1) or
+                     (f.find(self.env['PN']) == 0 and
+                      f.find(".inc") != -1)):
+                with open(full_path_f + ".tmp", "w+") as temp_recipe:
+                    with open(full_path_f) as recipe:
+                        for line in recipe:
+                            m = re.match("(.*)" + old_md5 + "(.*)", line)
+                            if m is not None:
+                                temp_recipe.write(m.group(1) + new_md5 + m.group(2) + "\n")
+                            else:
+                                temp_recipe.write(line)
+
+                os.rename(full_path_f + ".tmp", full_path_f)
 
         return 0
 
@@ -441,27 +469,41 @@ class Package(object):
 
         with open(os.path.realpath(fetch_log)) as log:
             for line in log:
-                if line.startswith("SRC_URI[md5sum]"):
-                    md5sum_line = line
-                elif line.startswith("SRC_URI[sha256sum]"):
-                    sha256sum_line = line
+                m1 = re.match("^SRC_URI\[.*md5sum\].*", line)
+                m2 = re.match("^SRC_URI\[.*sha256sum\].*", line)
+                if m1 is not None:
+                    md5sum_line = m1.group(0) + '\n'
+                elif m2 is not None:
+                    sha256sum_line = m2.group(0) + '\n'
 
         if md5sum_line is None or sha256sum_line is None:
             E(" %s: Fetch error, not checksum related!" % self.pn)
             return self.ERR_FETCH
 
         I(" %s: Update recipe checksums ..." % self.pn)
-        with open(self.env['FILE'] + ".tmp", "w+") as temp_recipe:
-            with open(self.env['FILE']) as recipe:
-                for line in recipe:
-                    if line.startswith("SRC_URI[md5sum]"):
-                        temp_recipe.write(md5sum_line)
-                    elif line.startswith("SRC_URI[sha256sum]"):
-                        temp_recipe.write(sha256sum_line)
-                    else:
-                        temp_recipe.write(line)
+        # checksums are usually in the main recipe but they can also be in inc
+        # files... Go through the recipes/inc files until we find them
+        for f in os.listdir(self.recipe_dir):
+            full_path_f = os.path.join(self.recipe_dir, f)
+            if os.path.isfile(full_path_f) and \
+                    ((f.find(self.env['PN']) == 0 and
+                      f.find(self.env['PKGV']) != -1 and
+                      f.find(".bb") != -1) or
+                     (f.find(self.env['PN']) == 0 and
+                      f.find(".inc") != -1)):
+                with open(full_path_f + ".tmp", "w+") as temp_recipe:
+                    with open(full_path_f) as recipe:
+                        for line in recipe:
+                            m1 = re.match("^SRC_URI\[.*md5sum\].*", line)
+                            m2 = re.match("^SRC_URI\[.*sha256sum\].*", line)
+                            if m1 is not None:
+                                temp_recipe.write(md5sum_line)
+                            elif m2 is not None:
+                                temp_recipe.write(sha256sum_line)
+                            else:
+                                temp_recipe.write(line)
 
-        os.rename(self.env['FILE'] + ".tmp", self.env['FILE'])
+                os.rename(full_path_f + ".tmp", full_path_f)
 
         self.checksums_changed = True
 
@@ -524,13 +566,13 @@ class Package(object):
                             continue
                         # patch is on the first SRC_URI line
                         elif m2 is not None:
-                            temp_recipe.write(m2.group(1) + "\\")
+                            temp_recipe.write(m2.group(1) + "\\\n")
                         # patch is in the middle
                         elif m3 is not None:
                             continue
                         # patch is last in list
                         elif m4 is not None:
-                            temp_recipe.write(m4.group(1) + "\"")
+                            temp_recipe.write(m4.group(1) + "\"\n")
                         # nothing matched in recipe but we deleted the patch
                         # anyway? Then we must bail out!
                         else:
@@ -543,6 +585,7 @@ class Package(object):
         # if we removed any backported patches, return 0, so we can
         # re-compile and see what happens
         if patches_removed:
+            I(" %s: removed some backported patches, retrying ...", self.pn)
             self.commit_msg += commit_msg
             return self.ERR_RETRY
 
@@ -573,7 +616,7 @@ class Package(object):
 
         if license_file is not None:
             self.create_diff_file(license_file, old_md5, new_md5)
-            self.license_diff_file = os.path.join(self.workdir, license_file + ".diff")
+            self.license_diff_file = os.path.join(self.workdir, os.path.basename(license_file + ".diff"))
             if self.interactive:
                 W("  %s: license checksum failed for file %s. The recipe has"
                   "been updated! View diff? (Y/n)" % (self.pn, license_file))
@@ -605,35 +648,63 @@ class Package(object):
         elif err == 0:
             return self.ERR_NONE
 
-        failed_task_name = None
-        failed_task_log = None
+        failed = dict()
         machine = None
 
         for line in stdout.split("\n"):
             D(" %s: %s" % (self.pn, line))
 
             machine_match = re.match("MACHINE[\t ]+= *\"(.*)\"$", line)
-            task_log_match = re.match("ERROR: Logfile of failure stored in: (.*log\.(.*)\.[0-9]*)", line)
+            task_log_match = re.match("ERROR: Logfile of failure stored in: (.*/([^/]*)/[^/]*/temp/log\.(.*)\.[0-9]*)", line)
             incomp_host = re.match("ERROR: " + self.pn + " was skipped: incompatible with host (.*) \(.*$", line)
 
             if task_log_match is not None:
-                failed_task_log = task_log_match.group(1)
-                failed_task_name = task_log_match.group(2)
+                failed[task_log_match.group(2)] = (task_log_match.group(3), task_log_match.group(1))
             elif machine_match is not None:
                 machine = machine_match.group(1)
             elif incomp_host is not None:
                 W(" %s: compilation failed: incompatible host %s" % (self.pn, incomp_host.group(1)))
                 return self.ERR_NONE
 
-        if failed_task_name is None:
-            E(" %s: unable to extract failed task name from stdout!" % self.pn)
+        if len(failed) == 0:
+            E(" %s: unable to extract failed task/recipe/log name from stdout!" % self.pn)
             return self.ERR_OTHER
 
-        ret = self.error_handler[failed_task_name](failed_task_log)
+        # if the failed recipe(s) is/are not the one we upgrade, try to clean sstate
+        # and then retry
+        if not self.pn in failed:
+            already_retried = False
+            for failed_recipe in failed:
+                if failed_recipe in self.retried_recipes:
+                    # we already retried, we'd best leave it to a human to handle
+                    # it :)
+                    already_retried = True
+                # put the recipe in the retried list
+                self.retried_recipes.add(failed_recipe)
+
+            if already_retried:
+                ret = self.ERR_OTHER
+            else:
+                I(" %s: The following recipe(s): %s, failed.  "
+                  "Doing a 'cleansstate' and then retry ..." %
+                  (self.pn, ' '.join(failed.keys())))
+                self.bb.cleansstate(' '.join(failed.keys()))
+                ret = self.ERR_RETRY
+        else:
+            if failed[self.pn][0] in self.error_handler:
+                ret = self.error_handler[failed[self.pn][0]](failed[self.pn][1])
+            else:
+                ret = self.ERR_OTHER
 
         if ret != self.ERR_NONE and ret != self.ERR_RETRY:
-            W(" %s: task %s failed, copying log to %s" % (self.pn, failed_task_name, self.workdir))
-            os.symlink(failed_task_log, os.path.join(self.workdir, machine + "_log." + failed_task_name))
+            for failed_recipe in failed:
+                W(" %s: %s(%s) failed, copying log to %s" %
+                    (self.pn, failed_recipe,
+                     failed[failed_recipe][0], self.workdir))
+                os.symlink(failed[failed_recipe][1],
+                           os.path.join(self.workdir, failed_recipe + "_" +
+                                        machine + "_log." +
+                                        failed[failed_recipe][0]))
             with open(os.path.join(self.workdir, "bitbake.log"), "w+") as log:
                 log.write(stdout)
 
@@ -672,6 +743,7 @@ class Package(object):
 
             W(" %s: Dropping uncommited work!" % self.pn)
             self.git.reset_hard()
+            self.git.clean_untracked()
 
         return self.ERR_NONE
 
@@ -691,7 +763,6 @@ class Package(object):
         if self.skip_compilation:
             return self.ERR_NONE
 
-        compilation_error = False
         for machine in self.machines:
             retry = True
             while retry:
@@ -703,13 +774,8 @@ class Package(object):
                 elif err == self.ERR_RETRY:
                     retry = True
                     continue
-                elif err == self.ERR_COMPILATION:
-                    compilation_error = True
                 else:
                     return err
-
-        if compilation_error:
-            return self.ERR_COMPILATION
 
         return self.ERR_NONE
 
@@ -720,6 +786,7 @@ class Package(object):
         self.to_ver = to_ver
         self.skip_compilation = skip_compilation
         self.license_diff_file = None
+        self.retried_recipes = set()
 
         for step, msg, err_msg in self.upgrade_steps:
             if msg is not None:
@@ -727,7 +794,7 @@ class Package(object):
 
             err = step()
             if err:
-                E("%s : %s" % (self.pn, err_msg))
+                E(" %s: %s" % (self.pn, err_msg))
                 E(" %s: upgrade FAILED! Logs and/or file diffs are available in %s" % (self.pn, self.workdir))
                 return err
 
@@ -740,6 +807,7 @@ class Packages(Package):
     def __init__(self, auto_mode):
         super(Packages, self).__init__(auto_mode)
         self.patch_file = None
+        self.author = None
         # a list of tuples (package, ver) for each upgrade status
         self.upgrade_stats = [
             ([], "Succeeded"),
@@ -801,29 +869,34 @@ class Packages(Package):
 
     # this function will be called at the end of each package upgrade
     def pkg_upgrade_handler(self, err):
+        if err != self.ERR_NONE:
+            I(" %s: Dropping changes from git ..." % self.pn)
+            self.git.reset_hard(1)
+            self.git.clean_untracked()
         return 0
 
     def upgrade(self, package_list):
         self.succeeded["total"] = 0
         self.failed["total"] = 0
         self.maintainers = set()
+        total_pkgs = len(package_list)
+        attempted_pkgs = 0
         for pn, to_ver, maintainer in package_list:
+            attempted_pkgs += 1
+            I(" ATTEMPT PACKAGE %d/%d" % (attempted_pkgs, total_pkgs))
             err = super(Packages, self).upgrade(pn, to_ver, maintainer)
 
             I(" %s: Auto commit changes ..." % self.pn)
-            self.git.commit(self.commit_msg)
-            I(" %s: Save patch in %s." % (self.pn, self.workdir))
-            git_err, stdout, stderr = self.git.create_patch(self.workdir)
+            git_err, stdout, stderr = self.git.commit(self.commit_msg, self.author)
             if git_err == 0:
-                self.patch_file = stdout.strip()
-
-            if err != self.ERR_NONE:
-                I(" %s: Dropping changes from git ..." % self.pn)
-                self.git.reset_hard(1)
-
-            self.update_statistics(err)
+                I(" %s: Save patch in %s." % (self.pn, self.workdir))
+                git_err, stdout, stderr = self.git.create_patch(self.workdir)
+                if git_err == 0:
+                    self.patch_file = stdout.strip()
 
             self.pkg_upgrade_handler(err)
+
+            self.update_statistics(err)
 
         self.create_stat_msg()
 
@@ -851,6 +924,7 @@ class Universe(Packages, Email):
 
     def __init__(self):
         super(Universe, self).__init__(True)
+        self.author = "Upgrade Helper <uh@not.set>"
         self.git = Git(os.path.dirname(os.getenv('PATH', False).split(':')[0]))
 
         # we don't need the detect_git_repo() step anymore, remove it
@@ -892,14 +966,22 @@ class Universe(Packages, Email):
             if next_ver == self.history[pn][0]:
                 return False
 
+        # drop native/cross/cross-canadian packages. We deal with native
+        # when upgrading the main package but we keep away of cross* pkgs...
+        # for now
+        if pn.find("cross") != -1 or pn.find("native") != -1:
+            return False
+
         return True
 
     def update_master(self):
-        # from all pending changes
-        self.git.reset_hard(0)
+        I(" Drop all uncommited changes (including untracked) ...")
+        self.git.reset_hard()
+        self.git.clean_untracked()
 
         self.git.checkout_branch("master")
         self.git.delete_branch("upgrades")
+        I(" Sync master ...")
         self.git.pull()
         self.git.create_branch("upgrades")
 
@@ -918,14 +1000,40 @@ class Universe(Packages, Email):
         return 0
 
     def get_pkgs_to_upgrade(self):
-        I(" Fetching upstream versions for all packages ...")
-        err = self.bb.checkpkg("universe")
-        if err == -1:
-            return self.ERR_OTHER
+        last_date_checked = None
+        last_master_commit = None
+        current_date = date.isoformat(date.today())
+        err, stdout, stderr = self.git.last_commit("master")
+        if err == 0:
+            cur_master_commit = stdout
+        else:
+            cur_master_commit = "unknown"
+
+        if os.path.exists(get_build_dir() + "/upgrade-helper/last_checkpkg_run"):
+            with open(get_build_dir() + "/upgrade-helper/last_checkpkg_run") as last_check:
+                line = last_check.read()
+                last_date_checked = line.split(',')[0]
+                last_master_commit = line.split(',')[1]
+                last_checkpkg_file = line.split(',')[2]
+
+        if last_master_commit != cur_master_commit or last_date_checked != current_date:
+            I(" Fetching upstream versions for all packages ...")
+            err = self.bb.checkpkg("universe")
+            if err == -1:
+                return self.ERR_OTHER
+
+            last_checkpkg_file = os.path.realpath(get_build_dir() + "/tmp/log/checkpkg.csv")
+        else:
+            I(" Using last checkpkg.csv file since last master commit and last"
+              " check date are the same ...")
+
+        with open(get_build_dir() + "/upgrade-helper/last_checkpkg_run", "w+") as last_check:
+            last_check.write(current_date + "," + cur_master_commit + "," +
+                             last_checkpkg_file)
 
         pkgs_list = []
 
-        with open(get_build_dir() + "/tmp/log/checkpkg.csv", "r") as csv:
+        with open(last_checkpkg_file, "r") as csv:
             for line in csv:
                 (pn, cur_ver, next_ver, maintainer) = self.parse_checkpkg_line(line)
                 if (pn, cur_ver, next_ver, maintainer) != (None, None, None, None) and \
@@ -949,6 +1057,24 @@ class Universe(Packages, Email):
 
     # overriding the base method
     def pkg_upgrade_handler(self, err):
+        # drop last upgrade from git. It's safer this way if the upgrade has
+        # problems and other packages depend on it. Give the other packages a
+        # chance...
+        I(" %s: Dropping changes from git ..." % self.pn)
+        self.git.reset_hard(1)
+        self.git.clean_untracked()
+
+        # do not update history if error was ERR_OTHER or ERR_FETCH. The
+        # former may mean that other recipes failed and the latter that there
+        # was a transient network problem. Hence, we can try them next time
+        if err != self.ERR_OTHER and err != self.ERR_FETCH:
+            self.update_history(self.pn, self.to_ver, self.maintainer,
+                                self.upgrade_stats[err][1])
+
+        # don't bother maintainer with mails for these errors
+        if err == self.ERR_UNSUPPORTED_PROTOCOL or err == self.ERR_OTHER:
+            return 0
+
         if self.maintainer in maintainer_override:
             to_addr = maintainer_override[self.maintainer]
         else:
@@ -978,17 +1104,15 @@ class Universe(Packages, Email):
 
         self.send_email(to_addr, subject, msg_body, attachments)
 
-        self.update_history(self.pn, self.to_ver, self.maintainer,
-                            self.upgrade_stats[err][1])
         return 0
 
     def create_stat_msg(self):
         super(Universe, self).create_stat_msg()
         self.stat_msg += "* Statistics per maintainer:\n"
         for m in self.maintainers:
-            total_attempted = self.suceeded[m] + self.failed[m]
+            total_attempted = self.succeeded[m] + self.failed[m]
             self.stat_msg += "    %s: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
-                             (m.split("@")[0]. total_attempted, self.succeeded[m],
+                             (m.split("@")[0], total_attempted, self.succeeded[m],
                              self.succeeded[m] * 100.0 / total_attempted,
                              self.failed[m],
                              self.failed[m] * 100.0 / total_attempted)
@@ -1012,7 +1136,14 @@ class Universe(Packages, Email):
 
         self.prepare()
 
-        super(Universe, self).upgrade(self.get_pkgs_to_upgrade())
+        package_list = self.get_pkgs_to_upgrade()
+
+        print("########### The list of packages to be upgraded ############")
+        for p, v, m in package_list:
+            print("%s,%s,%s" % (p, v, m))
+        print("############################################################")
+
+        super(Universe, self).upgrade(package_list)
 
         self.send_status_mail()
 
