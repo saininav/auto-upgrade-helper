@@ -1,4 +1,28 @@
 #!/usr/bin/env python
+# vim: set ts=4 sw=4 et:
+#
+# Copyright (c) 2013 Intel Corporation
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 2 as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+#
+# DESCRIPTION
+#  This is a package upgrade helper script. Use 'upgrade-helper.py -h' for more
+#  help.
+#
+# AUTHORS
+# Laurentiu Palcu <laurentiu.palcu@intel.com>
+#
 
 import argparse
 import os
@@ -12,10 +36,14 @@ import re
 import sys
 import ConfigParser as cp
 from smtplib import SMTP
+import mimetypes
 from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
+from email.generator import Generator
 from datetime import date
 import shutil
+from cStringIO import StringIO
 
 for path in os.environ["PATH"].split(':'):
     if os.path.exists(path) and "bitbake" in os.listdir(path):
@@ -249,14 +277,28 @@ class Email(object):
         msg.attach(MIMEText(text))
 
         for file in files:
-            attachment = MIMEText(open(file, "rb").read())
+            ctype, encoding = mimetypes.guess_type(file)
+            if ctype is None or encoding is not None:
+                ctype = 'application/octet-stream'
+            maintype, subtype = ctype.split('/', 1)
+
+            if maintype == "text":
+                attachment = MIMEText(open(file).read(), _subtype=subtype)
+            else:
+                attachment = MIMEBase(maintype, _subtype=subtype)
+                attachment.set_payload(open(file, 'rb').read())
+
             attachment.add_header('Content-Disposition', 'attachment; filename="%s"'
                                   % os.path.basename(file))
             msg.attach(attachment)
 
+            out = StringIO()
+            msg_gen = Generator(out, mangle_from_=False).flatten(msg)
+            msg_text = out.getvalue()
+
         try:
             smtp = SMTP(self.smtp_host, self.smtp_port)
-            smtp.sendmail(self.from_addr, to_addr, msg.as_string())
+            smtp.sendmail(self.from_addr, to_addr, msg_text)
             smtp.close()
         except:
             E("Could not send email!")
