@@ -281,10 +281,6 @@ class Email(object):
 
         msg = MIMEMultipart()
         msg['From'] = self.from_addr
-        if type(to_addr) is list:
-            msg['To'] = ', '.join(to_addr)
-        else:
-            msg['To'] = to_addr
         msg['Subject'] = subject
 
         msg.attach(MIMEText(text))
@@ -305,16 +301,16 @@ class Email(object):
                                   % os.path.basename(file))
             msg.attach(attachment)
 
-            out = StringIO()
-            msg_gen = Generator(out, mangle_from_=False).flatten(msg)
-            msg_text = out.getvalue()
+        out = StringIO()
+        msg_gen = Generator(out, mangle_from_=False).flatten(msg)
+        msg_text = out.getvalue()
 
         try:
             smtp = SMTP(self.smtp_host, self.smtp_port)
             smtp.sendmail(self.from_addr, to_addr, msg_text)
             smtp.close()
-        except:
-            E("Could not send email!")
+        except Exception as e:
+            E("Could not send email: %s" % str(e))
             return -1
 
         return 0
