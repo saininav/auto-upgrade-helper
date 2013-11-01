@@ -102,31 +102,44 @@ def parse_cmdline():
                         help="set the debug level: CRITICAL=1, ERROR=2, WARNING=3, INFO=4, DEBUG=5")
     parser.add_argument("-s", "--skip-compilation", action="store_true", default=False,
                         help="do not compile, just change the checksums, remove PR, and commit")
+    parser.add_argument("-c", "--config-file", default="upgrade-helper.conf",
+                        help="Path to the configuration file. Default is BUILDDIR/upgrade-helper/upgrade-helper.py")
     return parser.parse_args()
 
 
 def get_build_dir():
     return os.getenv('BUILDDIR')
 
-cfg_file_path = os.path.join(get_build_dir(), "upgrade-helper", "upgrade-helper.conf")
-settings = dict()
-maintainer_override = dict()
-if os.path.exists(cfg_file_path):
-    cfg = cp.ConfigParser()
-    cfg.read(cfg_file_path)
-    try:
-        settings_list = cfg.items("settings")
-        for s in settings_list:
-            settings[s[0]] = s[1]
-    except:
-        pass
+def parse_config_file(config_file):
+    settings = dict()
+    maintainer_override = dict()
 
-    try:
-        maintainer_override_list = cfg.items("maintainer_override")
-        for item in maintainer_override_list:
-            maintainer_override[item[0]] = item[1]
-    except:
-        pass
+    if config_file is not None:
+        if os.path.exists(config_file):
+            cfg_file = config_file
+        else:
+            cfg_file = os.path.join(get_build_dir(), "upgrade-helper", config_file)
+    else:
+        cfg_file = os.path.join(get_build_dir(), "upgrade-helper", "upgrade-helper.conf")
+
+    if os.path.exists(cfg_file):
+        cfg = cp.ConfigParser()
+        cfg.read(cfg_file)
+        try:
+            settings_list = cfg.items("settings")
+            for s in settings_list:
+                settings[s[0]] = s[1]
+        except:
+            pass
+
+        try:
+            maintainer_override_list = cfg.items("maintainer_override")
+            for item in maintainer_override_list:
+                maintainer_override[item[0]] = item[1]
+        except:
+            pass
+
+    return (settings, maintainer_override)
 
 
 class Git(object):
@@ -1193,10 +1206,15 @@ class Universe(Packages, Email):
 
 
 if __name__ == "__main__":
+    global settings
+    global maintainer_override
+
     debug_levels = [log.CRITICAL, log.ERROR, log.WARNING, log.INFO, log.DEBUG]
     args = parse_cmdline()
     log.basicConfig(format='%(levelname)s:%(message)s',
                     level=debug_levels[args.debug_level - 1])
+
+    settings, maintainer_override = parse_config_file(args.config_file)
 
     if len(args.package) > 1:
         pkg_list = []
