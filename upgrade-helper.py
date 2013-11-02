@@ -1068,6 +1068,8 @@ class Universe(Packages, Email):
                 last_date_checked = line.split(',')[0]
                 last_master_commit = line.split(',')[1]
                 last_checkpkg_file = line.split(',')[2]
+                if not os.path.exists(last_checkpkg_file):
+                    last_checkpkg_file = None
 
         if last_master_commit != cur_master_commit or last_date_checked != current_date or \
                 last_checkpkg_file is None:
