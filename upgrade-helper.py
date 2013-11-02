@@ -110,6 +110,7 @@ def parse_cmdline():
 def get_build_dir():
     return os.getenv('BUILDDIR')
 
+
 def parse_config_file(config_file):
     settings = dict()
     maintainer_override = dict()
@@ -302,7 +303,7 @@ class Email(object):
             msg.attach(attachment)
 
         out = StringIO()
-        msg_gen = Generator(out, mangle_from_=False).flatten(msg)
+        Generator(out, mangle_from_=False).flatten(msg)
         msg_text = out.getvalue()
 
         try:
@@ -1053,6 +1054,7 @@ class Universe(Packages, Email):
     def get_pkgs_to_upgrade(self):
         last_date_checked = None
         last_master_commit = None
+        last_checkpkg_file = None
         current_date = date.isoformat(date.today())
         err, stdout, stderr = self.git.last_commit("master")
         if err == 0:
@@ -1067,7 +1069,8 @@ class Universe(Packages, Email):
                 last_master_commit = line.split(',')[1]
                 last_checkpkg_file = line.split(',')[2]
 
-        if last_master_commit != cur_master_commit or last_date_checked != current_date:
+        if last_master_commit != cur_master_commit or last_date_checked != current_date or \
+                last_checkpkg_file is None:
             I(" Fetching upstream versions for all packages ...")
             err = self.bb.checkpkg("universe")
             if err == -1:
