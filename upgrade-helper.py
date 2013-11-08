@@ -282,6 +282,10 @@ class Email(object):
 
         msg = MIMEMultipart()
         msg['From'] = self.from_addr
+        if type(to_addr) is list:
+            msg['To'] = ', '.join(to_addr)
+        else:
+            msg['To'] = to_addr
         msg['Subject'] = subject
 
         msg.attach(MIMEText(text))
