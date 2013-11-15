@@ -41,6 +41,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.generator import Generator
+from datetime import datetime
 from datetime import date
 import shutil
 from cStringIO import StringIO
@@ -86,7 +87,9 @@ help_text = \
     "   # clean sstate directory before upgrading\n" \
     "   clean_sstate=yes\n" \
     "   # clean tmp directory before upgrading\n" \
-    "   clean_tmp=yes\n"
+    "   clean_tmp=yes\n" \
+    "   # keep previous commits or not\n" \
+    "   drop_previous_commits=yes\n"
 
 
 def parse_cmdline():
@@ -143,6 +146,72 @@ def parse_config_file(config_file):
     return (settings, maintainer_override)
 
 
+class Error(Exception):
+    def __init__(self, message=None, stdout=None, stderr=None):
+        self.message = message
+        self.stdout = stdout
+        self.stderr = stderr
+
+    def __str__(self):
+        return "Failed(other errors)"
+
+
+class FetchError(Error):
+    def __init__(self):
+        super(FetchError, self).__init__("do_fetch failed")
+
+    def __str__(self):
+        return "Failed(do_fetch)"
+
+
+class PatchError(Error):
+    def __init__(self):
+        super(PatchError, self).__init__("do_patch failed")
+
+    def __str__(self):
+        return "Failed(do_patch)"
+
+
+class ConfigureError(Error):
+    def __init__(self):
+        super(ConfigureError, self).__init__("do_configure failed")
+
+    def __str__(self):
+        return "Failed(do_configure)"
+
+
+class CompilationError(Error):
+    def __init__(self):
+        super(CompilationError, self).__init__("do_compile failed")
+
+    def __str__(self):
+        return "Failed(do_compile)"
+
+
+class LicenseError(Error):
+    def __init__(self):
+        super(LicenseError, self).__init__("license checksum does not match")
+
+    def __str__(self):
+        return "Failed(license issue)"
+
+
+class UnsupportedProtocolError(Error):
+    def __init__(self):
+        super(UnsupportedProtocolError, self).__init__("SRC_URI protocol not supported")
+
+    def __str__(self):
+        return "Failed(Unsupported protocol)"
+
+
+class UpgradeNotNeededError(Error):
+    def __init__(self):
+        super(UpgradeNotNeededError, self).__init__("Recipe already up to date")
+
+    def __str__(self):
+        return "Failed(up to date)"
+
+
 class Git(object):
     def __init__(self, dir):
         self.repo_dir = dir
@@ -154,11 +223,12 @@ class Git(object):
         cmd = "git " + operation
         try:
             stdout, stderr = bb.process.run(cmd)
-        except bb.process.ExecutionError as ex:
-            D("%s returned:\n%s" % (cmd, ex.__str__()))
-            return (-1, ex.stdout, ex.stderr)
+        except bb.process.ExecutionError as e:
+            D("%s returned:\n%s" % (cmd, e.__str__()))
+            raise Error("The following git command failed: " + operation,
+                        e.stdout, e.stderr)
 
-        return (0, stdout, stderr)
+        return stdout
 
     def mv(self, src, dest):
         return self._cmd("mv " + src + " " + dest)
@@ -202,10 +272,21 @@ class Git(object):
     def last_commit(self, branch_name):
         return self._cmd("log --pretty=format:\"%H\" -1" + branch_name)
 
+    def ls_remote(self, repo_url=None, options=None, refs=None):
+        cmd = "ls-remote"
+        if options is not None:
+            cmd += " " + options
+        if repo_url is not None:
+            cmd += " " + repo_url
+        if refs is not None:
+            cmd += " " + refs
+        return self._cmd(cmd)
+
 
 class Bitbake(object):
     def __init__(self, build_dir):
         self.build_dir = build_dir
+        self.log_dir = None
         super(Bitbake, self).__init__()
 
     def _cmd(self, recipe, options=None, env_var=None):
@@ -216,15 +297,25 @@ class Bitbake(object):
         if options is not None:
             cmd += options + " "
 
+        cmd += recipe
+
         os.chdir(self.build_dir)
 
         try:
-            stdout, stderr = bb.process.run(cmd + recipe)
-        except bb.process.ExecutionError as ex:
-            D("%s returned:\n%s" % (cmd, ex.__str__()))
-            return (-1, ex.stdout, ex.stderr)
+            stdout, stderr = bb.process.run(cmd)
+        except bb.process.ExecutionError as e:
+            D("%s returned:\n%s" % (cmd, e.__str__()))
 
-        return (0, stdout, stderr)
+            if self.log_dir is not None and os.path.exists(self.log_dir):
+                with open(os.path.join(self.log_dir, "bitbake.log"), "w+") as log:
+                    log.write(e.stdout)
+
+            raise Error("\'" + cmd + "\' failed", e.stdout, e.stderr)
+
+        return stdout
+
+    def set_log_dir(self, dir):
+        self.log_dir = dir
 
     def env(self, recipe):
         return self._cmd(recipe, "-e")
@@ -249,6 +340,9 @@ class Bitbake(object):
 
     def complete(self, recipe, machine):
         return self._cmd(recipe, env_var="MACHINE=" + machine)
+
+    def dependency_graph(self, package_list):
+        return self._cmd(package_list, "-g")
 
 
 class Email(object):
@@ -316,150 +410,56 @@ class Email(object):
             smtp.close()
         except Exception as e:
             E("Could not send email: %s" % str(e))
-            return -1
-
-        return 0
 
 
-class Package(object):
-    ERR_NONE = 0
-    ERR_FETCH = ERR_NONE + 1
-    ERR_PATCH = ERR_FETCH + 1
-    ERR_RETRY = ERR_PATCH + 1
-    ERR_CONFIGURE = ERR_RETRY + 1
-    ERR_COMPILATION = ERR_CONFIGURE + 1
-    ERR_LICENSE = ERR_COMPILATION + 1
-    ERR_UPGRADE_NOT_NEEDED = ERR_LICENSE + 1
-    ERR_UNSUPPORTED_PROTOCOL = ERR_UPGRADE_NOT_NEEDED + 1
-    ERR_OTHER = ERR_UNSUPPORTED_PROTOCOL + 1
+class Recipe(object):
+    def __init__(self, env, new_ver, interactive, workdir, recipe_dir, bitbake, git):
+        self.env = env
+        self.new_ver = new_ver
+        self.interactive = interactive
+        self.workdir = workdir
+        self.recipe_dir = recipe_dir
+        self.bb = bitbake
+        self.bb.set_log_dir(workdir)
+        self.git = git
 
-    def __init__(self, auto_mode):
-        self.bb = Bitbake(get_build_dir())
-        self.uh_dir = get_build_dir() + "/upgrade-helper"
-        if not os.path.exists(self.uh_dir):
-            os.mkdir(self.uh_dir)
-        self.machines = ["qemux86", "qemux86-64", "qemuarm", "qemumips", "qemuppc"]
-        self.interactive = not auto_mode
+        self.retried_recipes = set()
+        self.license_diff_file = None
 
-        self.error_handler = {
-            "do_fetch": self.handle_error_do_fetch,
-            "do_patch": self.handle_error_do_patch,
-            "do_configure": self.handle_error_do_configure,
-            "do_compile": self.handle_error_do_compile
-        }
+        self.recipes_renamed = False
+        self.checksums_changed = False
 
-        self.upgrade_steps = [
-            #step_function , message to display before executing the function,
-            #                error message if function failed
-            (self.create_workdir, None, "Unable to create work directory!"),
-            (self.detect_git_repo, "Detecting git repository ...",
-                                   None),
-            (self.get_env, "Fetch old package environment ...",
-                           "Could not fetch package environment!"),
-            (self.get_next_version, None, "Could not get the next version!"),
-            (self.check_upgrade_needed, None, "Already at latest version, upgrade not needed!"),
-            (self.check_src_uri_protocol, None, "Unsupported SRC_URI protocol!"),
-            (self.unpack_package, "Fetch/Unpack original package ...",
-                                  "Fetching/Unpacking original package failed!"),
-            (self.rename_files, "Renaming recipes, reset PR (if exists) ...",
-                                "Rename operation failed"),
-            (self.get_env, "Fetch new package environment ...",
-                           "Could not fetch package environment!"),
-            (self.cleanall_package, "Clean all ...",
-                                    "Clean all failed!"),
-            (self.fetch_package, "Fetch new package (old checksums) ...",
-                                 "Fetching new package failed! Either it succeeded "
-                                 "when it should've failed or it failed but no "
-                                 "checksums were detected in the log."),
-            (self.compile_package, None, "Compilation failed!")
-        ]
+        self.old_env = None
 
-        super(Package, self).__init__()
+        self.commit_msg = self.env['PN'] + ": upgrade to " + self.new_ver
 
-    def get_env(self):
-        err, stdout, stderr = self.bb.env(self.pn)
-        if err == -1:
-            return None
+        super(Recipe, self).__init__()
 
-        assignment = re.compile("^([^ \t=]*)=(.*)")
-        bb_env = dict()
-        for line in stdout.split('\n'):
-            m = assignment.match(line)
-            if m:
-                if m.group(1) in bb_env:
-                    continue
+    def update_env(self, env):
+        self.env = env
 
-                bb_env[m.group(1)] = m.group(2).strip("\"")
+    def _rename_files_dir(self, ver):
+        dest_dir = os.path.join(self.recipe_dir, self.env['PN'])
+        for path in os.listdir(self.recipe_dir):
+            src_dir = os.path.join(self.recipe_dir, path)
+            if (path.find("files") == 0 or
+                    path.find(self.env['PN'] + '-' + ver) == 0) and \
+                    os.path.isdir(src_dir):
+                if not os.path.exists(dest_dir):
+                    self.git.mv(src_dir, dest_dir)
+                else:
+                    for f in os.listdir(src_dir):
+                        self.git.mv(os.path.join(src_dir, f), dest_dir)
+                    shutil.rmtree(src_dir)
 
-        if bb_env is None:
-            return self.ERR_OTHER
-
-        self.env = bb_env
-        self.recipe_dir = os.path.dirname(self.env['FILE'])
-        return self.ERR_NONE
-
-    def parse_checkpkg_line(self, line):
-        m = re.match("^([^ \t]*)[ \t]+([^ \t]*)[ \t]+([^ \t]*).*<(.*)@(.*)>[ \t]+.*", line)
-        if m is not None:
-            return (m.group(1), m.group(2), m.group(3), m.group(4) + "@" + m.group(5))
-
-        return (None, None, None, None)
-
-    def get_next_version(self):
-        if self.to_ver is None:
-            I(" %s: Checking next available version..." % self.pn)
-
-            if self.env['INHERIT'].find("distrodata") == -1:
-                C(" \"distrodata.bbclass\" not inherited. Consider adding the following to your local.conf:\n"
-                  "INHERIT =+ \"distrodata\"\n"
-                  "require conf/distro/include/recipe_color.inc\n"
-                  "require conf/distro/include/distro_alias.inc\n"
-                  "require conf/distro/include/maintainers.inc\n"
-                  "require conf/distro/include/upstream_tracking.inc\n")
-                exit(1)
-
-            err = self.bb.checkpkg(self.pn)
-            if err == -1:
-                return self.ERR_OTHER
-
-            with open(get_build_dir() + "/tmp/log/checkpkg.csv", "r") as csv:
-                (pn, cur_ver, self.to_ver, self.maintainer) = \
-                    self.parse_checkpkg_line(csv.readlines()[1])
-
-        if self.to_ver is None or self.to_ver == "N/A" or self.to_ver == "INVALID":
-            return self.ERR_OTHER
-
-        return self.ERR_NONE
-
-    def check_upgrade_needed(self):
-        if self.to_ver == self.env['PV']:
-            return self.ERR_UPGRADE_NOT_NEEDED
-
-        I(" %s: Upgrading to version %s ..." % (self.pn, self.to_ver))
-
-        # start to construct the commit message
-        self.commit_msg = self.pn + ": upgrade to " + self.to_ver
-
-        return self.ERR_NONE
-
-    def check_src_uri_protocol(self):
-        if self.env['SRC_URI'].find("ftp://") != -1 or  \
-                self.env['SRC_URI'].find("http://") != -1 or \
-                self.env['SRC_URI'].find("https://") != -1:
-            return self.ERR_NONE
-
-        return self.ERR_UNSUPPORTED_PROTOCOL
-
-    def rename_files(self):
+    def rename(self):
         # change PR before renaming
         for f in os.listdir(self.recipe_dir):
             full_path_f = os.path.join(self.recipe_dir, f)
             if os.path.isfile(full_path_f) and \
-                    ((f.find(self.env['PN']) == 0 and
-                      f.find(self.env['PKGV']) != -1 and
+                    ((f.find(self.env['PN']) == 0 and f.find(self.env['PKGV']) != -1 and
                       f.find(".bb") != -1) or
-                     (f.find(self.env['PN']) == 0 and
-                      f.find(".inc") != -1)):
+                     (f.find(self.env['PN']) == 0 and f.find(".inc") != -1)):
                 with open(full_path_f + ".tmp", "w+") as temp_recipe:
                     with open(full_path_f) as recipe:
                         for line in recipe:
@@ -472,16 +472,19 @@ class Package(object):
         # rename recipes
         for path in os.listdir(self.recipe_dir):
             if path.find(self.env['PN']) == 0 and path.find(self.env['PKGV']) != -1:
-                new_path = re.sub(self.env['PKGV'], self.to_ver, path)
-                if self.git.mv(os.path.join(self.recipe_dir, path),
-                               os.path.join(self.recipe_dir, new_path)) == (-1,):
-                    return self.ERR_OTHER
+                new_path = re.sub(re.escape(self.env['PKGV']), self.new_ver, path)
+                self.git.mv(os.path.join(self.recipe_dir, path),
+                            os.path.join(self.recipe_dir, new_path))
 
-        # since renaming was successful, save the old environment so it doesn't
-        # get overwritten. It will be needed for license file diffs, etc.
+        # rename files/PN-PV directories to PN
+        self._rename_files_dir(self.new_ver)
+
+        self.recipes_renamed = True
+
+        # since we did some renaming, backup the current environment
         self.old_env = self.env
 
-        return self.ERR_NONE
+        # start formatting the commit message
 
     def create_diff_file(self, file, old_md5, new_md5):
         old_file = os.path.join(self.old_env['S'], file)
@@ -517,9 +520,7 @@ class Package(object):
 
                 os.rename(full_path_f + ".tmp", full_path_f)
 
-        return 0
-
-    def handle_error_do_fetch(self, fetch_log):
+    def _change_recipe_checksums(self, fetch_log):
         md5sum_line = None
         sha256sum_line = None
 
@@ -533,20 +534,17 @@ class Package(object):
                     sha256sum_line = m2.group(0) + '\n'
 
         if md5sum_line is None or sha256sum_line is None:
-            E(" %s: Fetch error, not checksum related!" % self.pn)
-            return self.ERR_FETCH
+            raise FetchError
 
-        I(" %s: Update recipe checksums ..." % self.pn)
+        I(" %s: Update recipe checksums ..." % self.env['PN'])
         # checksums are usually in the main recipe but they can also be in inc
         # files... Go through the recipes/inc files until we find them
         for f in os.listdir(self.recipe_dir):
             full_path_f = os.path.join(self.recipe_dir, f)
             if os.path.isfile(full_path_f) and \
-                    ((f.find(self.env['PN']) == 0 and
-                      f.find(self.env['PKGV']) != -1 and
+                    ((f.find(self.env['PN']) == 0 and f.find(self.env['PKGV']) != -1 and
                       f.find(".bb") != -1) or
-                     (f.find(self.env['PN']) == 0 and
-                      f.find(".inc") != -1)):
+                     (f.find(self.env['PN']) == 0 and f.find(".inc") != -1)):
                 with open(full_path_f + ".tmp", "w+") as temp_recipe:
                     with open(full_path_f) as recipe:
                         for line in recipe:
@@ -563,20 +561,27 @@ class Package(object):
 
         self.checksums_changed = True
 
-        return self.ERR_NONE
-
-    def handle_error_do_patch(self, patch_log):
+    def _remove_backported_patches(self, patch_log):
         patches_removed = False
-        commit_msg = "\n\nRemoved the following backported patch(es):\n"
+        commit_msg = "\n\nRemoved the following patch(es):\n"
+
+        reverse_applied = []
+
+        with open(patch_log) as log:
+            for line in log:
+                m = re.match("Patch ([^ ]*) can be reverse-applied", line)
+                if m is not None:
+                    reverse_applied.append(m.group(1))
 
         for uri in self.env['SRC_URI'].split():
             if not uri.startswith("file://"):
                 continue
 
             patch_file = uri.split("//")[1]
+            remove_reason = "backport"
 
             # delete the file, if it's a backported patch
-            dirs = [self.pn + "-" + self.env['PV'], self.pn, "files"]
+            dirs = [self.env['PN'] + "-" + self.env['PKGV'], self.env['PN'], "files"]
             for dir in dirs:
                 patch_file_path = os.path.join(self.recipe_dir, dir, patch_file)
                 if not os.path.exists(patch_file_path):
@@ -588,6 +593,10 @@ class Package(object):
                         if line.find("Upstream-Status: Backport") != -1:
                             patch_delete = True
                             break
+
+                if not patch_delete and patch_file in reverse_applied:
+                    patch_delete = True
+                    remove_reason = "changes included in release"
 
                 if patch_delete:
                     os.remove(patch_file_path)
@@ -601,7 +610,6 @@ class Package(object):
 
                     break
 
-            # if patch was not backported, no reason to change recipe
             if not patch_delete:
                 continue
 
@@ -632,22 +640,32 @@ class Package(object):
                         # nothing matched in recipe but we deleted the patch
                         # anyway? Then we must bail out!
                         else:
-                            return self.ERR_PATCH
+                            return False
 
             os.rename(self.env['FILE'] + ".tmp", self.env['FILE'])
 
-            commit_msg += " * " + patch_file + "\n"
+            commit_msg += " * " + patch_file + " (" + remove_reason + ")\n"
 
         # if we removed any backported patches, return 0, so we can
         # re-compile and see what happens
         if patches_removed:
-            I(" %s: removed some backported patches, retrying ...", self.pn)
+            I(" %s: removed some backported patches, retrying ...", self.env['PN'])
             self.commit_msg += commit_msg
-            return self.ERR_RETRY
+            return True
 
-        return self.ERR_PATCH
+        return False
 
-    def handle_error_do_configure(self, config_log):
+    def _is_license_issue(self, config_log):
+        with open(config_log) as log:
+            for line in log:
+                m = re.match("ERROR: " + self.env['PN'] +
+                             "[^:]*: md5 data is not matching for file", line)
+                if m is not None:
+                    return True
+
+        return False
+
+    def _license_issue_handled(self, config_log):
         license_file = None
 
         with open(config_log) as log:
@@ -655,12 +673,12 @@ class Package(object):
                 if not line.startswith("ERROR:"):
                     continue
 
-                m_old = re.match("ERROR: " + self.pn +
-                                 ": md5 data is not matching for file://([^;]*);md5=(.*)$", line)
-                m_old_lines = re.match("ERROR: " + self.pn +
-                                       ": md5 data is not matching for file://([^;]*);beginline=[0-9]*;endline=[0-9]*;md5=(.*)$", line)
-                m_new = re.match("ERROR: " + self.pn +
-                                 ": The new md5 checksum is (.*)", line)
+                m_old = re.match("ERROR: " + self.env['PN'] +
+                                 "[^:]*: md5 data is not matching for file://([^;]*);md5=(.*)$", line)
+                m_old_lines = re.match("ERROR: " + self.env['PN'] +
+                                       "[^:]*: md5 data is not matching for file://([^;]*);beginline=[0-9]*;endline=[0-9]*;md5=(.*)$", line)
+                m_new = re.match("ERROR: " + self.env['PN'] +
+                                 "[^:]*: The new md5 checksum is (.*)", line)
                 if m_old is not None:
                     license_file = m_old.group(1)
                     old_md5 = m_old.group(2)
@@ -675,7 +693,7 @@ class Package(object):
             self.license_diff_file = os.path.join(self.workdir, os.path.basename(license_file + ".diff"))
             if self.interactive:
                 W("  %s: license checksum failed for file %s. The recipe has"
-                  "been updated! View diff? (Y/n)" % (self.pn, license_file))
+                  "been updated! View diff? (Y/n)" % (self.env['PN'], license_file))
                 answer = sys.stdin.readline().strip().upper()
                 if answer == '' or answer == 'Y':
                     print(" ################ Licence file diff #################")
@@ -685,88 +703,332 @@ class Package(object):
                 print("Retry compilation? (Y/n)")
                 answer = sys.stdin.readline().strip().upper()
                 if answer == '' or answer == 'Y':
-                    return self.ERR_RETRY
+                    return True
             else:
                 E(" %s: license checksum failed for file %s. "
                   "Updated recipe accordingly! Please check diff file: %s" %
-                    (self.pn, license_file, self.license_diff_file))
+                    (self.env['PN'], license_file, self.license_diff_file))
 
-            return self.ERR_LICENSE
+        return False
 
-        return self.ERR_CONFIGURE
-
-    def handle_error_do_compile(self, compile_log):
-        return self.ERR_COMPILATION
-
-    def handle_error(self, err, stdout, stderr, expect_error=False):
-        if expect_error and err == 0:
-            return self.ERR_OTHER
-        elif err == 0:
-            return self.ERR_NONE
-
-        failed = dict()
+    def _get_failed_recipes(self, output):
+        failed_tasks = dict()
         machine = None
 
-        for line in stdout.split("\n"):
-            D(" %s: %s" % (self.pn, line))
-
+        for line in output.split("\n"):
             machine_match = re.match("MACHINE[\t ]+= *\"(.*)\"$", line)
             task_log_match = re.match("ERROR: Logfile of failure stored in: (.*/([^/]*)/[^/]*/temp/log\.(.*)\.[0-9]*)", line)
-            incomp_host = re.match("ERROR: " + self.pn + " was skipped: incompatible with host (.*) \(.*$", line)
 
             if task_log_match is not None:
-                failed[task_log_match.group(2)] = (task_log_match.group(3), task_log_match.group(1))
+                failed_tasks[task_log_match.group(2)] = (task_log_match.group(3), task_log_match.group(1))
             elif machine_match is not None:
                 machine = machine_match.group(1)
-            elif incomp_host is not None:
-                W(" %s: compilation failed: incompatible host %s" % (self.pn, incomp_host.group(1)))
-                return self.ERR_NONE
 
-        if len(failed) == 0:
-            E(" %s: unable to extract failed task/recipe/log name from stdout!" % self.pn)
-            return self.ERR_OTHER
+        # we didn't detect any failed tasks? then something else is wrong
+        if len(failed_tasks) == 0:
+            raise Error("could not detect failed task")
 
-        # if the failed recipe(s) is/are not the one we upgrade, try to clean sstate
-        # and then retry
-        if not self.pn in failed:
-            already_retried = False
-            for failed_recipe in failed:
-                if failed_recipe in self.retried_recipes:
-                    # we already retried, we'd best leave it to a human to handle
-                    # it :)
-                    already_retried = True
-                # put the recipe in the retried list
-                self.retried_recipes.add(failed_recipe)
+        return (machine, failed_tasks)
 
-            if already_retried:
-                ret = self.ERR_OTHER
+    def _is_incompatible_host(self, output):
+        for line in output.split("\n"):
+            incomp_host = re.match("ERROR: " + self.env['PN'] + " was skipped: incompatible with host (.*) \(.*$", line)
+
+            if incomp_host is not None:
+                return True
+
+        return False
+
+    def unpack(self):
+        self.bb.unpack(self.env['PN'])
+
+    def fetch(self):
+        try:
+            self.bb.fetch(self.env['PN'])
+        except Error as e:
+            machine, failed_recipes = self._get_failed_recipes(e.stdout)
+            if not self.env['PN'] in failed_recipes:
+                raise Error("unknown error occured during fetch")
+
+            if not self.checksums_changed:
+                self._change_recipe_checksums(failed_recipes[self.env['PN']][1])
+                return
             else:
-                I(" %s: The following recipe(s): %s, failed.  "
-                  "Doing a 'cleansstate' and then retry ..." %
-                  (self.pn, ' '.join(failed.keys())))
-                self.bb.cleansstate(' '.join(failed.keys()))
-                ret = self.ERR_RETRY
+                raise FetchError()
+
+        if self.recipes_renamed and not self.checksums_changed:
+            raise Error("fetch succeeded without changing checksums")
+
+    def cleanall(self):
+        self.bb.cleanall(self.env['PN'])
+
+    def _clean_failed_recipes(self, failed_recipes):
+        already_retried = False
+        for recipe in failed_recipes:
+            if recipe in self.retried_recipes:
+                # we already retried, we'd best leave it to a human to handle
+                # it :)
+                already_retried = True
+            # put the recipe in the retried list
+            self.retried_recipes.add(recipe)
+
+        if already_retried:
+            return False
         else:
-            if failed[self.pn][0] in self.error_handler:
-                ret = self.error_handler[failed[self.pn][0]](failed[self.pn][1])
+            I(" %s: The following recipe(s): %s, failed.  "
+              "Doing a 'cleansstate' and then retry ..." %
+              (self.env['PN'], ' '.join(failed_recipes.keys())))
+
+            self.bb.cleansstate(' '.join(failed_recipes.keys()))
+            return True
+
+    def compile(self, machine):
+        try:
+            self.bb.complete(self.env['PN'], machine)
+        except Error as e:
+            if self._is_incompatible_host(e.stdout):
+                W(" %s: compilation failed: incompatible host" % self.env['PN'])
+                return
+
+            machine, failed_recipes = self._get_failed_recipes(e.stdout)
+            if not self.env['PN'] in failed_recipes:
+                if not self._clean_failed_recipes(failed_recipes):
+                    raise CompilationError()
+
+                # retry
+                self.compile(machine)
             else:
-                ret = self.ERR_OTHER
+                failed_task = failed_recipes[self.env['PN']][0]
+                log_file = failed_recipes[self.env['PN']][1]
+                if failed_task == "do_patch":
+                    if not self._remove_backported_patches(log_file):
+                        raise PatchError()
 
-        if ret != self.ERR_NONE and ret != self.ERR_RETRY:
-            for failed_recipe in failed:
-                W(" %s: %s(%s) failed, copying log to %s" %
-                    (self.pn, failed_recipe,
-                     failed[failed_recipe][0], self.workdir))
-                os.symlink(failed[failed_recipe][1],
-                           os.path.join(self.workdir, failed_recipe + "_" +
-                                        machine + "_log." +
-                                        failed[failed_recipe][0]))
-            with open(os.path.join(self.workdir, "bitbake.log"), "w+") as log:
-                log.write(stdout)
+                    # retry
+                    self.compile(machine)
+                elif failed_task == "do_configure":
+                    if not self._is_license_issue(log_file):
+                        raise ConfigureError()
 
-        return ret
+                    if not self._license_issue_handled(log_file):
+                        raise LicenseError()
 
-    def create_workdir(self):
+                    #retry
+                    self.compile(machine)
+                elif failed_task == "do_fetch":
+                    raise FetchError()
+                else:
+                    # throw a compilation exception for everything else. It
+                    # doesn't really matter
+                    raise CompilationError()
+
+
+class GitRecipe(Recipe):
+    def _extract_tag_from_ver(self, ver):
+        m = re.match("(.*)\+.*\+.*", ver)
+        if m is not None:
+            return m.group(1)
+
+        raise Error("Could not extract git tag from version")
+
+    def _get_tag_sha1(self, tag):
+        m = re.match(".*(git://[^ ;]*).*", self.env['SRC_URI'])
+        if m is None:
+            raise Error("could not extract repo url from SRC_URI")
+
+        repo_url = m.group(1)
+
+        tags = self.git.ls_remote(repo_url, "--tags", "\*{}")
+
+        for t in tags.split('\n'):
+            if t.find(tag + "^{}") != -1:
+                return t.split()[0]
+
+        return None
+
+    def rename(self):
+        old_git_tag = self._extract_tag_from_ver(self.env['PKGV'])
+        new_git_tag = self._extract_tag_from_ver(self.new_ver)
+
+        if new_git_tag == old_git_tag:
+            raise UpgradeNotNeededError()
+
+        tag_sha1 = self._get_tag_sha1(new_git_tag)
+        if tag_sha1 is None:
+            raise Error("could not extract tag sha1")
+
+        for f in os.listdir(self.recipe_dir):
+            full_path_f = os.path.join(self.recipe_dir, f)
+            if os.path.isfile(full_path_f) and \
+                    ((f.find(self.env['PN']) == 0 and (f.find(old_git_tag) != -1 or
+                      f.find("git") != -1) and f.find(".bb") != -1) or
+                     (f.find(self.env['PN']) == 0 and f.find(".inc") != -1)):
+                with open(full_path_f + ".tmp", "w+") as temp_recipe:
+                    with open(full_path_f) as recipe:
+                        for line in recipe:
+                            m1 = re.match("^SRCREV *= *\".*\"", line)
+                            m2 = re.match("PV *= *\"[^\+]*(.*)\"", line)
+                            if m1 is not None:
+                                temp_recipe.write("SRCREV = \"" + tag_sha1 + "\"\n")
+                            elif m2 is not None:
+                                temp_recipe.write("PV = \"" + new_git_tag + m2.group(1) + "\"\n")
+                            else:
+                                temp_recipe.write(line)
+
+                os.rename(full_path_f + ".tmp", full_path_f)
+
+        self.env['PKGV'] = old_git_tag
+        self.new_ver = new_git_tag
+
+        super(GitRecipe, self).rename()
+
+    def fetch(self):
+        pass
+
+
+class SvnRecipe(Recipe):
+    pass
+
+
+class Statistics(object):
+    def __init__(self):
+        self.succeeded = dict()
+        self.failed = dict()
+        self.succeeded["total"] = 0
+        self.failed["total"] = 0
+        self.upgrade_stats = dict()
+        self.maintainers = set()
+
+    def update(self, pn, new_ver, maintainer, error):
+        if type(error).__name__ == "UpgradeNotNeededError":
+            return
+        elif error is None:
+            status = "Succeeded"
+        else:
+            status = str(error)
+
+        if not status in self.upgrade_stats:
+            self.upgrade_stats[status] = []
+
+        self.upgrade_stats[status].append((pn, new_ver, maintainer))
+
+        # add maintainer to the set of unique maintainers
+        self.maintainers.add(maintainer)
+
+        if not maintainer in self.succeeded:
+            self.succeeded[maintainer] = 0
+        if not maintainer in self.failed:
+            self.failed[maintainer] = 0
+
+        if status == "Succeeded":
+            self.succeeded["total"] += 1
+            self.succeeded[maintainer] += 1
+        else:
+            self.failed["total"] += 1
+            self.failed[maintainer] += 1
+
+    def pkg_stats(self):
+        stat_msg = "\nUpgrade statistics:\n"
+        stat_msg += "====================================================\n"
+        total_attempted = self.succeeded["total"] + self.failed["total"]
+        for status in self.upgrade_stats:
+            list_len = len(self.upgrade_stats[status])
+            if list_len > 0:
+                stat_msg += "* " + status + ": " + str(list_len) + "\n"
+
+                for pkg, new_ver, maintainer in self.upgrade_stats[status]:
+                    stat_msg += "    " + pkg + ", " + new_ver + ", " + \
+                                maintainer + "\n"
+
+        stat_msg += "++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+        stat_msg += "TOTAL: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
+                    (total_attempted, self.succeeded["total"],
+                    self.succeeded["total"] * 100.0 / total_attempted,
+                    self.failed["total"],
+                    self.failed["total"] * 100.0 / total_attempted)
+
+        return stat_msg
+
+    def maintainer_stats(self):
+        stat_msg = "* Statistics per maintainer:\n"
+        for m in self.maintainers:
+            total_attempted = self.succeeded[m] + self.failed[m]
+            stat_msg += "    %s: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
+                        (m.split("@")[0], total_attempted, self.succeeded[m],
+                        self.succeeded[m] * 100.0 / total_attempted,
+                        self.failed[m],
+                        self.failed[m] * 100.0 / total_attempted)
+
+        return stat_msg
+
+
+class Updater(object):
+    def __init__(self, auto_mode=False, skip_compilation=False):
+        self.uh_dir = get_build_dir() + "/upgrade-helper"
+        if not os.path.exists(self.uh_dir):
+            os.mkdir(self.uh_dir)
+
+        self.bb = Bitbake(get_build_dir())
+        self.git = None
+
+        self.author = None
+        self.skip_compilation = skip_compilation
+        self.interactive = not auto_mode
+
+        self.machines = ["qemux86", "qemux86-64", "qemuarm", "qemumips", "qemuppc"]
+
+        self.upgrade_steps = [
+            (self._create_workdir, None),
+            (self._detect_repo, "Detecting git repository location ..."),
+            (self._detect_recipe_type, None),
+            (self._unpack_original, "Fetch & unpack original package ..."),
+            (self._rename, "Renaming recipes, reset PR (if exists) ..."),
+            (self._cleanall, "Clean all ..."),
+            (self._fetch, "Fetch new package (old checksums) ..."),
+            (self._compile, None)
+        ]
+
+        self.statistics = Statistics()
+
+        super(Updater, self).__init__()
+
+    def _get_env(self):
+        stdout = self.bb.env(self.pn)
+
+        assignment = re.compile("^([^ \t=]*)=(.*)")
+        bb_env = dict()
+        for line in stdout.split('\n'):
+            m = assignment.match(line)
+            if m:
+                if m.group(1) in bb_env:
+                    continue
+
+                bb_env[m.group(1)] = m.group(2).strip("\"")
+
+        self.env = bb_env
+        self.recipe_dir = os.path.dirname(self.env['FILE'])
+
+    def _parse_checkpkg_line(self, line):
+        m = re.match("^([^ \t]*)[ \t]+([^ \t]*)[ \t]+([^ \t]*).*<(.*)@(.*)>[ \t]+.*", line)
+        if m is not None:
+            return (m.group(1), m.group(2), m.group(3), m.group(4) + "@" + m.group(5))
+
+        return (None, None, None, None)
+
+    def _detect_recipe_type(self):
+        if self.env['SRC_URI'].find("ftp://") != -1 or  \
+                self.env['SRC_URI'].find("http://") != -1 or \
+                self.env['SRC_URI'].find("https://") != -1:
+            recipe = Recipe
+        elif self.env['SRC_URI'].find("git://") != -1:
+            recipe = GitRecipe
+        else:
+            raise UnsupportedProtocolError
+
+        self.recipe = recipe(self.env, self.new_ver, self.interactive, self.workdir,
+                             self.recipe_dir, self.bb, self.git)
+
+    def _create_workdir(self):
         self.workdir = self.uh_dir + "/" + self.pn
 
         if not os.path.exists(self.workdir):
@@ -775,19 +1037,15 @@ class Package(object):
             for f in os.listdir(self.workdir):
                 os.remove(os.path.join(self.workdir, f))
 
-        return self.ERR_NONE
+    def _detect_repo(self):
+        self._get_env()
 
-    def detect_git_repo(self):
-        if self.get_env() != self.ERR_NONE:
-            C(" %s: could not detect git repository!" % self.pn)
-            exit(1)
+        if self.git is not None:
+            return
 
         self.git = Git(self.recipe_dir)
 
-        err, stdout, stderr = self.git.status()
-        if err == -1:
-            C(" %s: could not get repo status" % self.pn)
-            exit(1)
+        stdout = self.git.status()
 
         if stdout != "":
             if self.interactive:
@@ -801,165 +1059,178 @@ class Package(object):
             self.git.reset_hard()
             self.git.clean_untracked()
 
-        return self.ERR_NONE
+            self._get_env()
 
-    def unpack_package(self):
-        return self.handle_error(*self.bb.unpack(self.pn))
+    def _unpack_original(self):
+        self.recipe.unpack()
 
-    def fetch_package(self):
-        if self.to_ver == self.env['PV'] and not self.checksums_changed:
-            return self.handle_error(*self.bb.fetch(self.pn), expect_error=True)
-        else:
-            return self.handle_error(*self.bb.fetch(self.pn))
+    def _rename(self):
+        self.recipe.rename()
 
-    def cleanall_package(self):
-        return self.handle_error(*self.bb.cleanall(self.pn))
+        # fetch new environment
+        self._get_env()
 
-    def compile_package(self):
+        self.recipe.update_env(self.env)
+
+    def _cleanall(self):
+        self.recipe.cleanall()
+
+    def _fetch(self):
+        self.recipe.fetch()
+
+    def _compile(self):
         if self.skip_compilation:
-            return self.ERR_NONE
+            W(" %s: Compilation was skipped by user choice!")
+            return
 
         for machine in self.machines:
-            retry = True
-            while retry:
-                retry = False
-                I(" %s: compiling for %s ..." % (self.pn, machine))
-                err = self.handle_error(*self.bb.complete(self.pn, machine))
-                if err == self.ERR_NONE:
+            I(" %s: compiling for %s ..." % (self.pn, machine))
+            self.recipe.compile(machine)
+
+    def _check_upstream_versions(self, packages=[("universe", None, None)]):
+        I(" Fetching upstream version(s) ...")
+
+        try:
+            self.bb.checkpkg(" ".join([p[0] for p in packages]))
+        except Error as e:
+            for line in e.stdout.split('\n'):
+                if line.find("ERROR: Task do_checkpkg does not exist") == 0:
+                    C(" \"distrodata.bbclass\" not inherited. Consider adding "
+                      "the following to your local.conf:\n\n"
+                      "INHERIT =+ \"distrodata\"\n"
+                      "require conf/distro/include/recipe_color.inc\n"
+                      "require conf/distro/include/distro_alias.inc\n"
+                      "require conf/distro/include/maintainers.inc\n"
+                      "require conf/distro/include/upstream_tracking.inc\n")
+                    exit(1)
+
+    def _get_packages_to_upgrade(self, packages=None):
+        if packages is None:
+            return []
+
+        if len(packages) == 1:
+            # if user specified the version to upgrade to, just return the
+            # tuple intact
+            if packages[0][1] is not None:
+                return packages
+
+        self._check_upstream_versions(packages)
+
+        pkgs_list = []
+
+        with open(get_build_dir() + "/tmp/log/checkpkg.csv") as csv:
+            for line in csv:
+                (pn, cur_ver, next_ver, maintainer) = self._parse_checkpkg_line(line)
+
+                if (pn, cur_ver, next_ver, maintainer) == (None, None, None, None):
                     continue
-                elif err == self.ERR_RETRY:
-                    retry = True
-                    continue
+
+                if cur_ver != next_ver and next_ver != "N/A" and \
+                        next_ver != "INVALID":
+                    pkgs_list.append((pn, next_ver, maintainer))
                 else:
-                    return err
+                    W(" Skip package %s (current version = %s, next version = %s)" %
+                        (pn, cur_ver, next_ver))
 
-        return self.ERR_NONE
-
-    def upgrade(self, package_name, to_ver=None, maintainer=None, skip_compilation=False):
-        self.pn = package_name
-        self.checksums_changed = False
-        self.maintainer = maintainer
-        self.to_ver = to_ver
-        self.skip_compilation = skip_compilation
-        self.license_diff_file = None
-        self.retried_recipes = set()
-
-        for step, msg, err_msg in self.upgrade_steps:
-            if msg is not None:
-                I(" %s: %s" % (self.pn, msg))
-
-            err = step()
-            if err:
-                E(" %s: %s" % (self.pn, err_msg))
-                E(" %s: upgrade FAILED! Logs and/or file diffs are available in %s" % (self.pn, self.workdir))
-                return err
-
-        I(" %s: upgrade SUCCESSFUL! Commit and test!" % self.pn)
-
-        return self.ERR_NONE
-
-
-class Packages(Package):
-    def __init__(self, auto_mode):
-        super(Packages, self).__init__(auto_mode)
-        self.patch_file = None
-        self.author = None
-        # a list of tuples (package, ver) for each upgrade status
-        self.upgrade_stats = [
-            ([], "Succeeded"),
-            ([], "Failed(do_fetch)"),
-            ([], "Failed(do_patch)"),
-            ([], None),  # we'll never have entries here (compilation retry error code)
-            ([], "Failed(do_configure)"),
-            ([], "Failed(do_compile)"),
-            ([], "Failed(license)"),
-            ([], "Failed(upgrade not needed)"),
-            ([], "Failed(SRC_URI protocol not supported)"),
-            ([], "Failed(other errors)")
-        ]
-        self.succeeded = dict()
-        self.failed = dict()
-
-    def create_stat_msg(self):
-        self.stat_msg = "Upgrade statistics:\n"
-        self.stat_msg += "====================================================\n"
-        total_attempted = self.succeeded["total"] + self.failed["total"]
-        for l, msg in self.upgrade_stats:
-            list_len = len(l)
-            if list_len > 0:
-                self.stat_msg += "* " + msg + ": " + str(list_len) + "\n"
-
-                for pkg, to_ver, maintainer in l:
-                    self.stat_msg += "    " + pkg + ", " + to_ver + ", " + \
-                                     maintainer + "\n"
-
-        self.stat_msg += "++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-        self.stat_msg += "TOTAL: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
-                         (total_attempted, self.succeeded["total"],
-                         self.succeeded["total"] * 100.0 / total_attempted,
-                         self.failed["total"],
-                         self.failed["total"] * 100.0 / total_attempted)
-        return 0
-
-    def print_stats(self):
-        print("%s" % self.stat_msg)
-        return 0
-
-    def update_statistics(self, err):
-        self.upgrade_stats[err][0].append((self.pn, self.to_ver, self.maintainer))
-
-        # add maintainer to the set of unique maintainers
-        self.maintainers.add(self.maintainer)
-
-        if not self.maintainer in self.succeeded:
-            self.succeeded[self.maintainer] = 0
-        if not self.maintainer in self.failed:
-            self.failed[self.maintainer] = 0
-
-        if err == self.ERR_NONE:
-            self.succeeded["total"] += 1
-            self.succeeded[self.maintainer] += 1
-        else:
-            self.failed["total"] += 1
-            self.failed[self.maintainer] += 1
+        return pkgs_list
 
     # this function will be called at the end of each package upgrade
     def pkg_upgrade_handler(self, err):
-        if err != self.ERR_NONE:
-            I(" %s: Dropping changes from git ..." % self.pn)
-            self.git.reset_hard(1)
-            self.git.clean_untracked()
-        return 0
+        if err is not None and self.patch_file is not None:
+            answer = "N"
+            if self.interactive:
+                I(" %s: Do you want to keep the changes? (y/N)" % self.pn)
+                answer = sys.stdin.readline().strip().upper()
 
-    def upgrade(self, package_list):
-        self.succeeded["total"] = 0
-        self.failed["total"] = 0
-        self.maintainers = set()
-        total_pkgs = len(package_list)
+            if answer == '' or answer == 'N':
+                I(" %s: Dropping changes from git ..." % self.pn)
+                self.git.reset_hard(1)
+                self.git.clean_untracked()
+
+    def _commit_changes(self):
+        try:
+            self.patch_file = None
+            if self.recipe is not None:
+                I(" %s: Auto commit changes ..." % self.pn)
+                self.git.commit(self.recipe.commit_msg, self.author)
+                I(" %s: Save patch in %s." % (self.pn, self.workdir))
+                stdout = self.git.create_patch(self.workdir)
+                self.patch_file = stdout.strip()
+        except Error as e:
+            for line in e.stdout.split("\n"):
+                if line.find("nothing to commit") == 0:
+                    I(" %s: Nothing to commit!" % self.pn)
+                    return
+
+            raise e
+
+    def _order_list(self, package_list):
+        try:
+            self.bb.dependency_graph(' '.join(p[0] for p in package_list))
+        except Error as e:
+            multiple_providers = False
+            for l in e.stdout.split('\n'):
+                if l.find("ERROR: Multiple .bb files are due to be built which each provide") == 0:
+                    multiple_providers = True
+
+            if not multiple_providers:
+                raise e
+
+        dep_file = os.path.join(get_build_dir(), "pn-buildlist")
+        ordered_list = []
+        with open(dep_file) as deps:
+            for d in deps:
+                ordered_list.extend(p for p in package_list if p[0] == d.strip())
+
+        return ordered_list
+
+    def run(self, package_list=None):
+#[lp]        pkgs_to_upgrade = self._order_list(self._get_packages_to_upgrade(package_list))
+        pkgs_to_upgrade = self._get_packages_to_upgrade(package_list)
+
+        total_pkgs = len(pkgs_to_upgrade)
+
         attempted_pkgs = 0
-        for pn, to_ver, maintainer in package_list:
+        for self.pn, self.new_ver, self.maintainer in pkgs_to_upgrade:
+            self.recipe = None
             attempted_pkgs += 1
             I(" ATTEMPT PACKAGE %d/%d" % (attempted_pkgs, total_pkgs))
-            err = super(Packages, self).upgrade(pn, to_ver, maintainer)
+            try:
+                I(" %s: upgrading to %s" % (self.pn, self.new_ver))
+                for step, msg in self.upgrade_steps:
+                    if msg is not None:
+                        I(" %s: %s" % (self.pn, msg))
+                    step()
 
-            I(" %s: Auto commit changes ..." % self.pn)
-            git_err, stdout, stderr = self.git.commit(self.commit_msg, self.author)
-            if git_err == 0:
-                I(" %s: Save patch in %s." % (self.pn, self.workdir))
-                git_err, stdout, stderr = self.git.create_patch(self.workdir)
-                if git_err == 0:
-                    self.patch_file = stdout.strip()
+                I(" %s: upgrade SUCCESSFUL! Please test!" % self.pn)
+                error = None
+            except UpgradeNotNeededError as e:
+                I(" %s: %s" % (self.pn, e.message))
+                error = e
+            except Error as e:
+                E(" %s: %s" % (self.pn, e.message))
+                E(" %s: upgrade FAILED! Logs and/or file diffs are available in %s" % (self.pn, self.workdir))
+                error = e
 
-            self.pkg_upgrade_handler(err)
+            self._commit_changes()
 
-            self.update_statistics(err)
+            self.pkg_upgrade_handler(error)
 
-        self.create_stat_msg()
+            self.statistics.update(self.pn, self.new_ver, self.maintainer, error)
 
-        self.print_stats()
+            if self.interactive and attempted_pkgs < total_pkgs:
+                I(" %s: Proceed to next package? (Y/n)" % self.pn)
+                answer = sys.stdin.readline().strip().upper()
+
+                if answer != 'Y' and answer != '':
+                    I("Aborted by user!")
+                    exit(0)
+
+        if (attempted_pkgs > 1):
+            print("%s" % self.statistics.pkg_stats())
 
 
-class Universe(Packages, Email):
+class UniverseUpdater(Updater, Email):
     mail_header = \
         "Hello,\n\nYou are receiving this email because you are the maintainer\n" \
         "of *%s* package and this is to let you know that the automatic attempt\n" \
@@ -979,16 +1250,9 @@ class Universe(Packages, Email):
         "Regards,\nThe Upgrade Helper"
 
     def __init__(self):
-        super(Universe, self).__init__(True)
+        super(UniverseUpdater, self).__init__(True)
         self.author = "Upgrade Helper <uh@not.set>"
         self.git = Git(os.path.dirname(os.getenv('PATH', False).split(':')[0]))
-
-        # we don't need the detect_git_repo() step anymore, remove it
-        self.upgrade_steps = [(f, s1, s2) for f, s1, s2 in self.upgrade_steps if f != self.detect_git_repo]
-
-        # we don't need to get the next version for each package. We do it once
-        # at the beginning
-        self.upgrade_steps = [(f, s1, s2) for f, s1, s2 in self.upgrade_steps if f != self.get_next_version]
 
         # read history file
         self.history_file = os.path.join(get_build_dir(), "upgrade-helper", "history.uh")
@@ -996,7 +1260,10 @@ class Universe(Packages, Email):
         if os.path.exists(self.history_file):
             with open(self.history_file) as history_file:
                 for line in history_file:
-                    self.history[line.split(',')[0]] = [line.split(',')[1], line.split(',')[2]]
+                    self.history[line.split(',')[0]] = [line.split(',')[1],
+                                                        line.split(',')[2],
+                                                        line.split(',')[3],
+                                                        line.split(',')[4]]
 
     # checks if maintainer is in whitelist and that the package itself is not
     # blacklisted: python, gcc, etc. Also, check the history if the package
@@ -1020,6 +1287,15 @@ class Universe(Packages, Email):
         if pn in self.history:
             # did we already try this version?
             if next_ver == self.history[pn][0]:
+                retry_delta = \
+                    date.toordinal(date.today()) - \
+                    date.toordinal(datetime.strptime(self.history[pn][2], '%Y-%m-%d'))
+                # retry packages that had fetch errors or other errors after
+                # more than 7 days
+                if (self.history[pn][3] == str(FetchError) or
+                        self.history[pn][3] == str(Error)) and retry_delta > 7:
+                    return True
+
                 return False
 
         # drop native/cross/cross-canadian packages. We deal with native
@@ -1036,12 +1312,13 @@ class Universe(Packages, Email):
         self.git.clean_untracked()
 
         self.git.checkout_branch("master")
-        self.git.delete_branch("upgrades")
+        try:
+            self.git.delete_branch("upgrades")
+        except Error:
+            pass
         I(" Sync master ...")
         self.git.pull()
         self.git.create_branch("upgrades")
-
-        return 0
 
     def prepare(self):
         if "clean_sstate" in settings and settings["clean_sstate"] == "yes" and \
@@ -1053,17 +1330,15 @@ class Universe(Packages, Email):
             I(" Removing tmp directory ...")
             shutil.rmtree(os.path.join(get_build_dir(), "tmp"))
 
-        return 0
-
-    def get_pkgs_to_upgrade(self):
+    def _get_packages_to_upgrade(self, packages=None):
         last_date_checked = None
         last_master_commit = None
         last_checkpkg_file = None
         current_date = date.isoformat(date.today())
-        err, stdout, stderr = self.git.last_commit("master")
-        if err == 0:
+        try:
+            stdout = self.git.last_commit("master")
             cur_master_commit = stdout
-        else:
+        except Error:
             cur_master_commit = "unknown"
 
         if os.path.exists(get_build_dir() + "/upgrade-helper/last_checkpkg_run"):
@@ -1077,11 +1352,7 @@ class Universe(Packages, Email):
 
         if last_master_commit != cur_master_commit or last_date_checked != current_date or \
                 last_checkpkg_file is None:
-            I(" Fetching upstream versions for all packages ...")
-            err = self.bb.checkpkg("universe")
-            if err == -1:
-                return self.ERR_OTHER
-
+            self._check_upstream_versions()
             last_checkpkg_file = os.path.realpath(get_build_dir() + "/tmp/log/checkpkg.csv")
         else:
             I(" Using last checkpkg.csv file since last master commit and last"
@@ -1095,61 +1366,74 @@ class Universe(Packages, Email):
 
         with open(last_checkpkg_file, "r") as csv:
             for line in csv:
-                (pn, cur_ver, next_ver, maintainer) = self.parse_checkpkg_line(line)
+                (pn, cur_ver, next_ver, maintainer) = self._parse_checkpkg_line(line)
                 if (pn, cur_ver, next_ver, maintainer) != (None, None, None, None) and \
                         cur_ver != next_ver and next_ver != "N/A" and \
                         next_ver != "INVALID":
                     if self.pkg_upgradable(pn, next_ver, maintainer):
                         pkgs_list.append((pn, next_ver, maintainer))
 
+        print("########### The list of packages to be upgraded ############")
+        for p, v, m in pkgs_list:
+            print("%s,%s,%s" % (p, v, m))
+        print("############################################################")
+
         return pkgs_list
 
-    def update_history(self, pn, to_ver, maintainer, upgrade_status):
+    def update_history(self, pn, new_ver, maintainer, upgrade_status):
         with open(self.history_file + ".tmp", "w+") as tmp_file:
             if os.path.exists(self.history_file):
                 with open(self.history_file) as history:
                     for line in history:
                         if not line.startswith(pn):
                             tmp_file.write(line)
-            tmp_file.write(pn + "," + to_ver + "," + maintainer +
-                           "," + upgrade_status + "\n")
+            tmp_file.write(pn + "," + new_ver + "," + maintainer +
+                           "," + date.isoformat(date.today()) + "," +
+                           upgrade_status + "\n")
         os.rename(self.history_file + ".tmp", self.history_file)
 
     # overriding the base method
     def pkg_upgrade_handler(self, err):
+        if err is None:
+            status_msg = "Succeeded"
+        else:
+            status_msg = str(err)
+
+        status = type(err).__name__
+
         # drop last upgrade from git. It's safer this way if the upgrade has
         # problems and other packages depend on it. Give the other packages a
         # chance...
-        I(" %s: Dropping changes from git ..." % self.pn)
-        self.git.reset_hard(1)
-        self.git.clean_untracked()
+        if ("drop_previous_commits" in settings and
+                settings["drop_previous_commits"] == "yes" and
+                err is None) or (err is not None and self.patch_file is not None):
+            I(" %s: Dropping changes from git ..." % self.pn)
+            self.git.reset_hard(1)
+            self.git.clean_untracked()
 
-        # do not update history if error was ERR_OTHER or ERR_FETCH. The
-        # former may mean that other recipes failed and the latter that there
-        # was a transient network problem. Hence, we can try them next time
-        if err != self.ERR_OTHER and err != self.ERR_FETCH:
-            self.update_history(self.pn, self.to_ver, self.maintainer,
-                                self.upgrade_stats[err][1])
+        self.update_history(self.pn, self.new_ver, self.maintainer,
+                            status_msg)
 
-        # don't bother maintainer with mails for these errors
-        if err == self.ERR_UNSUPPORTED_PROTOCOL or err == self.ERR_OTHER:
-            return 0
+        # don't bother maintainer with mails for unknown errors, unsuported
+        # protocol or if the recipe is already up to date
+        if status == "Error" or status == "UnsupportedProtocolError" or \
+                status == "UpgradeNotNeededError":
+            return
 
         if self.maintainer in maintainer_override:
             to_addr = maintainer_override[self.maintainer]
         else:
             to_addr = self.maintainer
 
-        subject = "[AUH] " + self.pn + ": upgrading to " + self.to_ver
-        if err == self.ERR_NONE:
+        subject = "[AUH] " + self.pn + ": upgrading to " + self.new_ver
+        if err is None:
             subject += " SUCCEEDED"
         else:
             subject += " FAILED"
 
-        msg_body = self.mail_header % \
-            (self.pn, self.to_ver, self.upgrade_stats[err][1])
+        msg_body = self.mail_header % (self.pn, self.new_ver, status_msg)
 
-        if err == self.ERR_NONE:
+        if err is None:
             msg_body += self.next_steps_info % os.path.basename(self.patch_file)
 
         msg_body += self.mail_footer
@@ -1157,27 +1441,13 @@ class Universe(Packages, Email):
         attachments = []
         if self.patch_file is not None:
             attachments.append(self.patch_file)
-        if err == self.ERR_LICENSE:
-            attachments.append(self.license_diff_file)
-        elif err != self.ERR_NONE:
+        # License issue
+        if status == "LicenseError":
+            attachments.append(self.recipe.license_diff_file)
+        elif err is not None:
             attachments.append(os.path.join(self.workdir, "bitbake.log"))
 
         self.send_email(to_addr, subject, msg_body, attachments)
-
-        return 0
-
-    def create_stat_msg(self):
-        super(Universe, self).create_stat_msg()
-        self.stat_msg += "* Statistics per maintainer:\n"
-        for m in self.maintainers:
-            total_attempted = self.succeeded[m] + self.failed[m]
-            self.stat_msg += "    %s: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
-                             (m.split("@")[0], total_attempted, self.succeeded[m],
-                             self.succeeded[m] * 100.0 / total_attempted,
-                             self.failed[m],
-                             self.failed[m] * 100.0 / total_attempted)
-
-        return 0
 
     def send_status_mail(self):
         if "status_recipients" not in settings:
@@ -1188,26 +1458,18 @@ class Universe(Packages, Email):
 
         subject = "[AUH] Upgrade status: " + date.isoformat(date.today())
 
-        self.send_email(to_list, subject, self.stat_msg)
-        return 0
+        msg = self.statistics.pkg_stats() + self.statistics.maintainer_stats()
 
-    def upgrade(self):
+        self.send_email(to_list, subject, msg)
+
+    def run(self):
         self.update_master()
 
         self.prepare()
 
-        package_list = self.get_pkgs_to_upgrade()
-
-        print("########### The list of packages to be upgraded ############")
-        for p, v, m in package_list:
-            print("%s,%s,%s" % (p, v, m))
-        print("############################################################")
-
-        super(Universe, self).upgrade(package_list)
+        super(UniverseUpdater, self).run()
 
         self.send_status_mail()
-
-        return 0
 
 
 if __name__ == "__main__":
@@ -1221,16 +1483,16 @@ if __name__ == "__main__":
 
     settings, maintainer_override = parse_config_file(args.config_file)
 
-    if len(args.package) > 1:
-        pkg_list = []
-        for pkg in args.package:
-            pkg_list.append((pkg, None, None))
-        pkgs = Packages(args.auto_mode)
-        pkgs.upgrade(pkg_list)
-    else:
-        if args.package[0] == "all":
-            universe = Universe()
-            universe.upgrade()
+    if len(args.package) == 1 and args.package[0] == "all":
+        updater = UniverseUpdater()
+        updater.run()
+    elif len(args.package) >= 1:
+        if len(args.package) == 1:
+            pkg_list = [(args.package[0], args.to_version, None)]
         else:
-            pkg = Package(args.auto_mode)
-            pkg.upgrade(args.package[0], args.to_version, args.skip_compilation)
+            pkg_list = []
+            for pkg in args.package:
+                pkg_list.append((pkg, None, None))
+
+        updater = Updater(args.auto_mode, args.skip_compilation)
+        updater.run(pkg_list)
