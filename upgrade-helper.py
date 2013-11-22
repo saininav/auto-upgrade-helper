@@ -898,6 +898,7 @@ class Statistics(object):
         self.failed["total"] = 0
         self.upgrade_stats = dict()
         self.maintainers = set()
+        self.total_attempted = 0
 
     def update(self, pn, new_ver, maintainer, error):
         if type(error).__name__ == "UpgradeNotNeededError":
@@ -927,10 +928,11 @@ class Statistics(object):
             self.failed["total"] += 1
             self.failed[maintainer] += 1
 
+        self.total_attempted += 1
+
     def pkg_stats(self):
         stat_msg = "\nUpgrade statistics:\n"
         stat_msg += "====================================================\n"
-        total_attempted = self.succeeded["total"] + self.failed["total"]
         for status in self.upgrade_stats:
             list_len = len(self.upgrade_stats[status])
             if list_len > 0:
@@ -942,22 +944,22 @@ class Statistics(object):
 
         stat_msg += "++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
         stat_msg += "TOTAL: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
-                    (total_attempted, self.succeeded["total"],
-                    self.succeeded["total"] * 100.0 / total_attempted,
+                    (self.total_attempted, self.succeeded["total"],
+                    self.succeeded["total"] * 100.0 / self.total_attempted,
                     self.failed["total"],
-                    self.failed["total"] * 100.0 / total_attempted)
+                    self.failed["total"] * 100.0 / self.total_attempted)
 
         return stat_msg
 
     def maintainer_stats(self):
         stat_msg = "* Statistics per maintainer:\n"
         for m in self.maintainers:
-            total_attempted = self.succeeded[m] + self.failed[m]
+            attempted = self.succeeded[m] + self.failed[m]
             stat_msg += "    %s: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
-                        (m.split("@")[0], total_attempted, self.succeeded[m],
-                        self.succeeded[m] * 100.0 / total_attempted,
+                        (m.split("@")[0], attempted, self.succeeded[m],
+                        self.succeeded[m] * 100.0 / attempted,
                         self.failed[m],
-                        self.failed[m] * 100.0 / total_attempted)
+                        self.failed[m] * 100.0 / attempted)
 
         return stat_msg
 
@@ -1460,7 +1462,10 @@ class UniverseUpdater(Updater, Email):
 
         msg = self.statistics.pkg_stats() + self.statistics.maintainer_stats()
 
-        self.send_email(to_list, subject, msg)
+        if self.statistics.total_attempted:
+            self.send_email(to_list, subject, msg)
+        else:
+            W("No packages attempted, not sending status mail!")
 
     def run(self):
         self.update_master()
