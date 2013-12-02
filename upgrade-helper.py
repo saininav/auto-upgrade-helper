@@ -307,7 +307,7 @@ class Bitbake(object):
             D("%s returned:\n%s" % (cmd, e.__str__()))
 
             if self.log_dir is not None and os.path.exists(self.log_dir):
-                with open(os.path.join(self.log_dir, "bitbake.log"), "w+") as log:
+                with open(os.path.join(self.log_dir, "bitbake_log.txt"), "w+") as log:
                     log.write(e.stdout)
 
             raise Error("\'" + cmd + "\' failed", e.stdout, e.stderr)
@@ -1447,7 +1447,7 @@ class UniverseUpdater(Updater, Email):
         if status == "LicenseError":
             attachments.append(self.recipe.license_diff_file)
         elif err is not None:
-            attachments.append(os.path.join(self.workdir, "bitbake.log"))
+            attachments.append(os.path.join(self.workdir, "bitbake_log.txt"))
 
         self.send_email(to_addr, subject, msg_body, attachments)
 
