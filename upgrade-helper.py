@@ -579,6 +579,7 @@ class Recipe(object):
 
             patch_file = uri.split("//")[1]
             remove_reason = "backport"
+            patch_delete = False
 
             # delete the file, if it's a backported patch
             dirs = [self.env['PN'] + "-" + self.env['PKGV'], self.env['PN'], "files"]
@@ -587,7 +588,6 @@ class Recipe(object):
                 if not os.path.exists(patch_file_path):
                     continue
 
-                patch_delete = False
                 with open(patch_file_path) as patch:
                     for line in patch:
                         if line.find("Upstream-Status: Backport") != -1:
