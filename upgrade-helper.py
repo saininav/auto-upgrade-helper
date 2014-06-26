@@ -674,18 +674,19 @@ class Recipe(object):
                     continue
 
                 m_old = re.match("ERROR: " + self.env['PN'] +
-                                 "[^:]*: md5 data is not matching for file://([^;]*);md5=(.*)$", line)
-                m_old_lines = re.match("ERROR: " + self.env['PN'] +
-                                       "[^:]*: md5 data is not matching for file://([^;]*);beginline=[0-9]*;endline=[0-9]*;md5=(.*)$", line)
+                        "[^:]*: md5 data is not matching for file://([^;]*);md5=(.*)$", line)
+                if not m_old:
+                    m_old = re.match("ERROR: " + self.env['PN'] +
+                            "[^:]*: md5 data is not matching for file://([^;]*);beginline=[0-9]*;endline=[0-9]*;md5=(.*)$", line)
+                if not m_old:
+                    m_old = re.match("ERROR: " + self.env['PN'] +
+                            "[^:]*: md5 data is not matching for file://([^;]*);endline=[0-9]*;md5=(.*)$", line)
                 m_new = re.match("ERROR: " + self.env['PN'] +
-                                 "[^:]*: The new md5 checksum is (.*)", line)
-                if m_old is not None:
+                        "[^:]*: The new md5 checksum is (.*)", line)
+                if m_old:
                     license_file = m_old.group(1)
                     old_md5 = m_old.group(2)
-                elif m_old_lines is not None:
-                    license_file = m_old_lines.group(1)
-                    old_md5 = m_old_lines.group(2)
-                elif m_new is not None:
+                elif m_new:
                     new_md5 = m_new.group(1)
 
         if license_file is not None:
@@ -807,6 +808,8 @@ class Recipe(object):
                     # retry
                     self.compile(machine)
                 elif failed_task == "do_configure":
+                    if self._is_license_issue(log_file):
+                        print("is_license_issue")
                     if not self._is_license_issue(log_file):
                         raise ConfigureError()
 
@@ -977,7 +980,8 @@ class Updater(object):
         self.skip_compilation = skip_compilation
         self.interactive = not auto_mode
 
-        self.machines = ["qemux86", "qemux86-64", "qemuarm", "qemumips", "qemuppc"]
+        #self.machines = ["qemux86", "qemux86-64", "qemuarm", "qemumips", "qemuppc"]
+        self.machines = ["qemux86"]
 
         self.upgrade_steps = [
             (self._create_workdir, None),
