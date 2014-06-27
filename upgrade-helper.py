@@ -231,7 +231,7 @@ class Git(object):
         return stdout
 
     def mv(self, src, dest):
-        return self._cmd("mv " + src + " " + dest)
+        return self._cmd("mv -f " + src + " " + dest)
 
     def stash(self):
         return self._cmd("stash")
@@ -431,7 +431,7 @@ class Recipe(object):
 
         self.old_env = None
 
-        self.commit_msg = self.env['PN'] + ": upgrade to " + self.new_ver
+        self.commit_msg = self.env['PN'] + ": upgrade to " + self.new_ver + "\n\n"
 
         super(Recipe, self).__init__()
 
@@ -706,9 +706,12 @@ class Recipe(object):
                 if answer == '' or answer == 'Y':
                     return True
             else:
-                E(" %s: license checksum failed for file %s. "
-                  "Updated recipe accordingly! Please check diff file: %s" %
-                    (self.env['PN'], license_file, self.license_diff_file))
+                W(" %s: license checksum failed for file %s."
+                  " The recipe has been updated! Diff file located at %s" %
+                  (self.env['PN'], license_file, self.license_diff_file))
+                I(" recompiling ...")
+                self.commit_msg += "license checksum changed for file " + license_file
+                return True
 
         return False
 
@@ -808,8 +811,6 @@ class Recipe(object):
                     # retry
                     self.compile(machine)
                 elif failed_task == "do_configure":
-                    if self._is_license_issue(log_file):
-                        print("is_license_issue")
                     if not self._is_license_issue(log_file):
                         raise ConfigureError()
 
@@ -832,20 +833,28 @@ class GitRecipe(Recipe):
         if m is not None:
             return m.group(1)
 
-        raise Error("Could not extract git tag from version")
+        # allow errors in the reporting system
+        return ver
 
-    def _get_tag_sha1(self, tag):
+    def _get_tag_sha1(self, new_tag):
+        print("new_git_tag %s" % new_tag)
         m = re.match(".*(git://[^ ;]*).*", self.env['SRC_URI'])
         if m is None:
             raise Error("could not extract repo url from SRC_URI")
 
         repo_url = m.group(1)
+        print("repo_url %s" % repo_url)
+        tags = self.git.ls_remote(repo_url, "--tags")
 
-        tags = self.git.ls_remote(repo_url, "--tags", "\*{}")
+        # Try to find tag ending with ^{}
+        for tag in tags.split('\n'):
+            if tag.endswith(new_tag + "^{}"):
+                return tag.split()[0]
 
-        for t in tags.split('\n'):
-            if t.find(tag + "^{}") != -1:
-                return t.split()[0]
+        # If not found, try to find simple tag
+        for tag in tags.split('\n'):
+            if tag.endswith(new_tag):
+                return tag.split()[0]
 
         return None
 
