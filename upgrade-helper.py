@@ -521,19 +521,29 @@ class Recipe(object):
                 os.rename(full_path_f + ".tmp", full_path_f)
 
     def _change_recipe_checksums(self, fetch_log):
-        md5sum_line = None
-        sha256sum_line = None
+        sums = {}
 
         with open(os.path.realpath(fetch_log)) as log:
             for line in log:
-                m1 = re.match("^SRC_URI\[.*md5sum\].*", line)
-                m2 = re.match("^SRC_URI\[.*sha256sum\].*", line)
-                if m1 is not None:
-                    md5sum_line = m1.group(0) + '\n'
-                elif m2 is not None:
-                    sha256sum_line = m2.group(0) + '\n'
+                m = None
+                key = None
+                m1 = re.match("^SRC_URI\[(.*)md5sum\].*", line)
+                m2 = re.match("^SRC_URI\[(.*)sha256sum\].*", line)
+                if m1:
+                    m = m1
+                    key = "md5sum"
+                elif m2:
+                    m = m2
+                    key = "sha256sum"
 
-        if md5sum_line is None or sha256sum_line is None:
+                if m:
+                    name = m.group(1)
+                    sum_line = m.group(0) + '\n'
+                    if name not in sums:
+                        sums[name] = {}
+                    sums[name][key] = sum_line;
+
+        if len(sums) == 0:
             raise FetchError
 
         I(" %s: Update recipe checksums ..." % self.env['PN'])
@@ -548,14 +558,15 @@ class Recipe(object):
                 with open(full_path_f + ".tmp", "w+") as temp_recipe:
                     with open(full_path_f) as recipe:
                         for line in recipe:
-                            m1 = re.match("^SRC_URI\[.*md5sum\].*", line)
-                            m2 = re.match("^SRC_URI\[.*sha256sum\].*", line)
-                            if m1 is not None:
-                                temp_recipe.write(md5sum_line)
-                            elif m2 is not None:
-                                temp_recipe.write(sha256sum_line)
-                            else:
-                                temp_recipe.write(line)
+                            for name in sums:
+                                m1 = re.match("^SRC_URI\["+ name + "md5sum\].*", line)
+                                m2 = re.match("^SRC_URI\["+ name + "sha256sum\].*", line)
+                                if m1:
+                                    temp_recipe.write(sums[name]["md5sum"])
+                                elif m2:
+                                    temp_recipe.write(sums[name]["sha256sum"])
+                                else:
+                                    temp_recipe.write(line)
 
                 os.rename(full_path_f + ".tmp", full_path_f)
 
@@ -646,6 +657,8 @@ class Recipe(object):
 
             commit_msg += " * " + patch_file + " (" + remove_reason + ")\n"
 
+        commit_msg += "\n"
+
         # if we removed any backported patches, return 0, so we can
         # re-compile and see what happens
         if patches_removed:
@@ -710,7 +723,7 @@ class Recipe(object):
                   " The recipe has been updated! Diff file located at %s" %
                   (self.env['PN'], license_file, self.license_diff_file))
                 I(" recompiling ...")
-                self.commit_msg += "license checksum changed for file " + license_file
+                self.commit_msg += "License checksum changed for file " + license_file
                 return True
 
         return False
