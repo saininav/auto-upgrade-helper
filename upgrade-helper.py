@@ -428,7 +428,11 @@ class Recipe(object):
 
         self.recipes_renamed = False
         self.checksums_changed = False
-
+        self.suffixes = [
+            "tar.gz", "tgz", "zip", "tar.bz2", "tar.xz", "tar.lz4", "bz2",
+            "lz4", "orig.tar.gz", "src.tar.gz", "src.rpm", "src.tgz",
+            "svnr\d+.tar.bz2", "stable.tar.gz", "src.rpm"]
+        self.suffix_index = 0
         self.old_env = None
 
         self.commit_msg = self.env['PN'] + ": upgrade to " + self.new_ver + "\n\n"
@@ -571,6 +575,40 @@ class Recipe(object):
                 os.rename(full_path_f + ".tmp", full_path_f)
 
         self.checksums_changed = True
+
+    def _is_uri_failure(self, fetch_log):
+        uri_failure = None
+        checksum_failure = None
+        with open(os.path.realpath(fetch_log)) as log:
+            for line in log:
+                if not uri_failure:
+                    uri_failure = re.match(".*Fetcher failure for URL.*", line)
+                if not checksum_failure:
+                    checksum_failure = re.match(".*Checksum mismatch.*", line)
+        if uri_failure and not checksum_failure:
+            return True
+        else:
+            return False
+                
+
+    def _change_source_suffix(self, new_suffix):
+        # Will change the extension of the archive from the SRC_URI
+        for f in os.listdir(self.recipe_dir):
+            full_path_f = os.path.join(self.recipe_dir, f)
+            if os.path.isfile(full_path_f) and \
+                    ((f.find(self.env['PN']) == 0 and f.find(self.env['PKGV']) != -1 and
+                      f.find(".bb") != -1) or
+                     (f.find(self.env['PN']) == 0 and f.find(".inc") != -1)):
+                with open(full_path_f + ".tmp", "w+") as temp_recipe:
+                    with open(full_path_f) as recipe:
+                        for line in recipe:
+                            m = re.match("^SRC_URI.*\${PV}\.(.*)[\" \\\\].*", line)
+                            if m:
+                                old_suffix = m.group(1)
+                                line = line.replace(old_suffix, new_suffix+" ")
+                            temp_recipe.write(line)
+                os.rename(full_path_f + ".tmp", full_path_f)
+
 
     def _remove_backported_patches(self, patch_log):
         patches_removed = False
@@ -767,8 +805,15 @@ class Recipe(object):
             if not self.env['PN'] in failed_recipes:
                 raise Error("unknown error occured during fetch")
 
+            fetch_log = failed_recipes[self.env['PN']][1]
+            if self.suffix_index < len(self.suffixes) and self._is_uri_failure(fetch_log):
+                I(" Trying new SRC_URI suffix: %s ..." % self.suffixes[self.suffix_index])
+                self._change_source_suffix(self.suffixes[self.suffix_index])
+                self.suffix_index += 1
+                self.fetch()
+
             if not self.checksums_changed:
-                self._change_recipe_checksums(failed_recipes[self.env['PN']][1])
+                self._change_recipe_checksums(fetch_log)
                 return
             else:
                 raise FetchError()
