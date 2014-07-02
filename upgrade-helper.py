@@ -442,19 +442,15 @@ class Recipe(object):
     def update_env(self, env):
         self.env = env
 
-    def _rename_files_dir(self, ver):
-        dest_dir = os.path.join(self.recipe_dir, self.env['PN'])
-        for path in os.listdir(self.recipe_dir):
-            src_dir = os.path.join(self.recipe_dir, path)
-            if (path.find("files") == 0 or
-                    path.find(self.env['PN'] + '-' + ver) == 0) and \
-                    os.path.isdir(src_dir):
-                if not os.path.exists(dest_dir):
-                    self.git.mv(src_dir, dest_dir)
-                else:
-                    for f in os.listdir(src_dir):
-                        self.git.mv(os.path.join(src_dir, f), dest_dir)
-                    shutil.rmtree(src_dir)
+    def _rename_files_dir(self, old_ver, new_ver):
+        # The files directory is renamed only if the previous
+        # one has the following format PackageName-PackageVersion.
+        # Otherwise is kept the same way.
+        src_dir = os.path.join(self.recipe_dir, self.env['PN'] + "-" + old_ver)
+        dest_dir = os.path.join(self.recipe_dir, self.env['PN'] + "-" + new_ver)
+
+        if os.path.exists(src_dir) and os.path.isdir(src_dir):
+            self.git.mv(src_dir, dest_dir)
 
     def rename(self):
         # change PR before renaming
@@ -473,15 +469,18 @@ class Recipe(object):
                                 temp_recipe.write(line)
                 os.rename(full_path_f + ".tmp", full_path_f)
 
-        # rename recipes
+        # rename recipes (not directories)
         for path in os.listdir(self.recipe_dir):
-            if path.find(self.env['PN']) == 0 and path.find(self.env['PKGV']) != -1:
+            full_path = os.path.join(self.recipe_dir, path)
+            if os.path.isfile(full_path) \
+              and path.find(self.env['PN']) == 0 \
+              and path.find(self.env['PKGV']) != -1:
                 new_path = re.sub(re.escape(self.env['PKGV']), self.new_ver, path)
                 self.git.mv(os.path.join(self.recipe_dir, path),
                             os.path.join(self.recipe_dir, new_path))
 
         # rename files/PN-PV directories to PN
-        self._rename_files_dir(self.new_ver)
+        self._rename_files_dir(self.env['PKGV'], self.new_ver)
 
         self.recipes_renamed = True
 
@@ -548,7 +547,7 @@ class Recipe(object):
                     sums[name][key] = sum_line;
 
         if len(sums) == 0:
-            raise FetchError
+            raise FetchError()
 
         I(" %s: Update recipe checksums ..." % self.env['PN'])
         # checksums are usually in the main recipe but they can also be in inc
@@ -804,7 +803,7 @@ class Recipe(object):
             machine, failed_recipes = self._get_failed_recipes(e.stdout)
             if not self.env['PN'] in failed_recipes:
                 raise Error("unknown error occured during fetch")
-
+            
             fetch_log = failed_recipes[self.env['PN']][1]
             if self.suffix_index < len(self.suffixes) and self._is_uri_failure(fetch_log):
                 I(" Trying new SRC_URI suffix: %s ..." % self.suffixes[self.suffix_index])
