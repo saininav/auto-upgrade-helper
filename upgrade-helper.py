@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # vim: set ts=4 sw=4 et:
 #
-# Copyright (c) 2013 Intel Corporation
+# Copyright (c) 2013 - 2014 Intel Corporation
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -17,11 +17,12 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #
 # DESCRIPTION
-#  This is a package upgrade helper script. Use 'upgrade-helper.py -h' for more
-#  help.
+#  This is a package upgrade helper script for the Yocto Project.
+#  Use 'upgrade-helper.py -h' for more help.
 #
 # AUTHORS
 # Laurentiu Palcu <laurentiu.palcu@intel.com>
+# Marius Avram <marius.avram@intel.com>
 #
 
 import argparse
@@ -266,6 +267,9 @@ class Git(object):
         else:
             return self._cmd("reset --hard HEAD~" + str(no_of_patches))
 
+    def reset_soft(self, no_of_patches):
+        return self._cmd("reset --soft HEAD~" + str(no_of_patches))
+
     def clean_untracked(self):
         return self._cmd("clean -fd")
 
@@ -428,6 +432,9 @@ class Recipe(object):
 
         self.recipes_renamed = False
         self.checksums_changed = False
+
+        self.removed_patches = False
+
         self.suffixes = [
             "tar.gz", "tgz", "zip", "tar.bz2", "tar.xz", "tar.lz4", "bz2",
             "lz4", "orig.tar.gz", "src.tar.gz", "src.rpm", "src.tgz",
@@ -436,6 +443,7 @@ class Recipe(object):
         self.old_env = None
 
         self.commit_msg = self.env['PN'] + ": upgrade to " + self.new_ver + "\n\n"
+        self.rm_patches_msg = "\n\nRemoved the following patch(es):\n"
 
         super(Recipe, self).__init__()
 
@@ -588,7 +596,7 @@ class Recipe(object):
             return True
         else:
             return False
-                
+
 
     def _change_source_suffix(self, new_suffix):
         # Will change the extension of the archive from the SRC_URI
@@ -608,6 +616,37 @@ class Recipe(object):
                             temp_recipe.write(line)
                 os.rename(full_path_f + ".tmp", full_path_f)
 
+    def _remove_patch_uri(self, uri):
+        with open(self.env['FILE'] + ".tmp", "w+") as temp_recipe:
+            with open(self.env['FILE']) as recipe:
+                for line in recipe:
+                    if line.find(uri) == -1:
+                        temp_recipe.write(line)
+                        continue
+
+                    m1 = re.match("SRC_URI *\+*= *\" *" + uri + " *\"", line)
+                    m2 = re.match("(SRC_URI *\+*= *\" *)" + uri + " *\\\\", line)
+                    m3 = re.match("[\t ]*" + uri + " *\\\\", line)
+                    m4 = re.match("([\t ]*)" + uri + " *\"", line)
+
+                    # patch on a single SRC_URI line:
+                    if m1 is not None:
+                        continue
+                    # patch is on the first SRC_URI line
+                    elif m2 is not None:
+                        temp_recipe.write(m2.group(1) + "\\\n")
+                    # patch is in the middle
+                    elif m3 is not None:
+                        continue
+                    # patch is last in list
+                    elif m4 is not None:
+                        temp_recipe.write(m4.group(1) + "\"\n")
+                    # nothing matched in recipe but we deleted the patch
+                    # anyway? Then we must bail out!
+                    else:
+                        return False
+
+        os.rename(self.env['FILE'] + ".tmp", self.env['FILE'])
 
     def _remove_backported_patches(self, patch_log):
         patches_removed = False
@@ -661,36 +700,7 @@ class Recipe(object):
             if not patch_delete:
                 continue
 
-            with open(self.env['FILE'] + ".tmp", "w+") as temp_recipe:
-                with open(self.env['FILE']) as recipe:
-                    for line in recipe:
-                        if line.find(uri) == -1:
-                            temp_recipe.write(line)
-                            continue
-
-                        m1 = re.match("SRC_URI *\+*= *\" *" + uri + " *\"", line)
-                        m2 = re.match("(SRC_URI *\+*= *\" *)" + uri + " *\\\\", line)
-                        m3 = re.match("[\t ]*" + uri + " *\\\\", line)
-                        m4 = re.match("([\t ]*)" + uri + " *\"", line)
-
-                        # patch on a single SRC_URI line:
-                        if m1 is not None:
-                            continue
-                        # patch is on the first SRC_URI line
-                        elif m2 is not None:
-                            temp_recipe.write(m2.group(1) + "\\\n")
-                        # patch is in the middle
-                        elif m3 is not None:
-                            continue
-                        # patch is last in list
-                        elif m4 is not None:
-                            temp_recipe.write(m4.group(1) + "\"\n")
-                        # nothing matched in recipe but we deleted the patch
-                        # anyway? Then we must bail out!
-                        else:
-                            return False
-
-            os.rename(self.env['FILE'] + ".tmp", self.env['FILE'])
+            self._remove_patch_uri(uri)
 
             commit_msg += " * " + patch_file + " (" + remove_reason + ")\n"
 
@@ -704,6 +714,36 @@ class Recipe(object):
             return True
 
         return False
+
+    def _remove_faulty_patch(self, patch_log):
+        patch_file = None
+        with open(patch_log) as log:
+            for line in log:
+                m = re.match("^Patch (.*) does not apply.*", line)
+                if m:
+                    patch_file = m.group(1)
+                    break
+
+        if not patch_file:
+            return False
+
+        I(" %s: Removing patch %s ..." % (self.env['PN'], patch_file))
+        dirs = [self.env['PN'] + "-" + self.env['PKGV'], self.env['PN'], "files"]
+        for dir in dirs:
+            patch_file_path = os.path.join(self.recipe_dir, dir, patch_file)
+            if not os.path.exists(patch_file_path):
+                continue
+            else:
+                # Find out upstream status of the patch
+                with open(patch_file_path) as patch:
+                    for line in patch:
+                        m = re.match(".*Upstream-Status:(.*)\n", line)
+                        if m:
+                            reason = m.group(1).strip().split()[0].lower()
+                os.remove(patch_file_path)
+                self._remove_patch_uri("file://" + patch_file)
+
+        self.rm_patches_msg += " * " + patch_file + " (" + reason + ") \n"
 
     def _is_license_issue(self, config_log):
         with open(config_log) as log:
@@ -793,6 +833,103 @@ class Recipe(object):
 
         return False
 
+    def _add_not_shipped(self, package_log):
+        files_not_shipped = False
+        files = []
+        occurences = []
+        prefixes = {
+          "/usr"            : "prefix",
+          "/bin"            : "base_bindir",
+          "/sbin"           : "base_sbindir",
+          "/lib"            : "base_libdir",
+          "/usr/share"      : "datadir",
+          "/etc"            : "sysconfdir",
+          "/var"            : "localstatedir",
+          "/usr/share/info" : "infodir",
+          "/usr/share/man"  : "mandir",
+          "/usr/share/doc"  : "docdir",
+          "/srv"            : "servicedir",
+          "/usr/bin"        : "bindir",
+          "/usr/sbin"       : "sbindir",
+          "/usr/libexec"    : "libexecdir",
+          "/usr/lib"        : "libdir",
+          "/usr/include"    : "includedir",
+          "/usr/lib/opie"   : "palmtopdir",
+          "/usr/lib/opie"   : "palmqtdir",
+        }
+
+        with open(package_log) as log:
+            for line in log:
+                if re.match(".*Files/directories were installed but not shipped.*", line):
+                    files_not_shipped = True
+                line = line.strip()
+                if files_not_shipped and os.path.isabs(line):
+                    # Count occurences for globbing
+                    path_exists = False
+                    for i in range(0, len(files)):
+                        if line.find(files[i]) == 0:
+                            path_exists = True
+                            occurences[i] += 1
+                            break
+                    if not path_exists:
+                        files.append(line)
+                        occurences.append(1)
+
+        for i in range(0, len(files)):
+            # Change paths to globbing expressions where is the case
+            if occurences[i] > 1:
+                files[i] += "/*"
+            largest_prefix = ""
+            # Substitute prefix
+            for prefix in prefixes:
+                if files[i].find(prefix) == 0 and len(prefix) > len(largest_prefix):
+                    largest_prefix = prefix
+            if largest_prefix:
+                replacement = "${" + prefixes[largest_prefix] + "}"
+                files[i] = files[i].replace(largest_prefix, replacement)
+
+        recipe_files = [
+            os.path.join(self.recipe_dir, self.env['PN'] + ".inc"),
+            self.env['FILE']]
+
+        # Append the new files
+        for recipe_filename in recipe_files:
+            with open(recipe_filename + ".tmp", "w+") as temp_recipe:
+                with open(recipe_filename) as recipe:
+                    files_clause = False
+                    for line in recipe:
+                        if re.match("^FILES_\${PN}[ +=].*", line):
+                            files_clause = True
+                            temp_recipe.write(line)
+                            continue
+                        # Get front spacing
+                        if files_clause:
+                            front_spacing = re.sub("[^ \t]", "", line)
+                        # Append once the last line has of FILES has been reached
+                        if re.match(".*\".*", line) and files_clause:
+                            files_clause = False
+                            line = line.replace("\"", "")
+                            line = line.rstrip()
+                            front_spacing = re.sub("[^ \t]", "", line)
+                            # Do not write an empty line
+                            if line.strip():
+                                temp_recipe.write(line + " \\\n")
+                            # Add spacing in case there was none
+                            if len(front_spacing) == 0:
+                                front_spacing = " " * 8
+                            # Write to file
+                            for i in range(len(files)-1):
+                                line = front_spacing + files[i] + " \\\n"
+                                temp_recipe.write(line)
+
+                            line = front_spacing + files[len(files) - 1] + "\"\n"
+                            temp_recipe.write(line)
+                            continue
+
+                        temp_recipe.write(line)
+
+            os.rename(recipe_filename + ".tmp", recipe_filename)
+
     def unpack(self):
         self.bb.unpack(self.env['PN'])
 
@@ -803,7 +940,7 @@ class Recipe(object):
             machine, failed_recipes = self._get_failed_recipes(e.stdout)
             if not self.env['PN'] in failed_recipes:
                 raise Error("unknown error occured during fetch")
-            
+
             fetch_log = failed_recipes[self.env['PN']][1]
             if self.suffix_index < len(self.suffixes) and self._is_uri_failure(fetch_log):
                 I(" Trying new SRC_URI suffix: %s ..." % self.suffixes[self.suffix_index])
@@ -843,9 +980,24 @@ class Recipe(object):
             self.bb.cleansstate(' '.join(failed_recipes.keys()))
             return True
 
+    def _undo_temporary(self):
+        # Undo removed patches
+        if self.removed_patches:
+            self.git.checkout_branch("master")
+            self.git.delete_branch("remove_patches")
+            self.git.reset_hard()
+            self.git.reset_soft(1)
+
+
     def compile(self, machine):
         try:
             self.bb.complete(self.env['PN'], machine)
+            if self.removed_patches:
+                # move temporary changes into master
+                self.git.checkout_branch("master")
+                self.git.delete_branch("remove_patches")
+                self.git.reset_soft(1)
+                self.commit_msg += self.rm_patches_msg + "\n"
         except Error as e:
             if self._is_incompatible_host(e.stdout):
                 W(" %s: compilation failed: incompatible host" % self.env['PN'])
@@ -862,12 +1014,20 @@ class Recipe(object):
                 failed_task = failed_recipes[self.env['PN']][0]
                 log_file = failed_recipes[self.env['PN']][1]
                 if failed_task == "do_patch":
-                    if not self._remove_backported_patches(log_file):
-                        raise PatchError()
+                    # Remove one patch after the other until
+                    # compilation works.
+                    if not self.removed_patches:
+                        self.git.commit("temporary")
+                        self.git.create_branch("remove_patches")
+                        self.git.checkout_branch("remove_patches")
+                        self.removed_patches = True
+                    self._remove_faulty_patch(log_file)
 
                     # retry
+                    I(" %s: Recompiling for ..." % (self.env['PN'], machine))
                     self.compile(machine)
                 elif failed_task == "do_configure":
+                    self._undo_temporary()
                     if not self._is_license_issue(log_file):
                         raise ConfigureError()
 
@@ -878,7 +1038,11 @@ class Recipe(object):
                     self.compile(machine)
                 elif failed_task == "do_fetch":
                     raise FetchError()
+                elif failed_task == "do_package":
+                    self._add_not_shipped(log_file)
+                    self.compile(machine)
                 else:
+                    self._undo_temporary()
                     # throw a compilation exception for everything else. It
                     # doesn't really matter
                     raise CompilationError()
