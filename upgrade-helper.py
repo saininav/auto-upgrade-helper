@@ -608,11 +608,24 @@ class Recipe(object):
                      (f.find(self.env['PN']) == 0 and f.find(".inc") != -1)):
                 with open(full_path_f + ".tmp", "w+") as temp_recipe:
                     with open(full_path_f) as recipe:
+                        source_found = False
                         for line in recipe:
-                            m = re.match("^SRC_URI.*\${PV}\.(.*)[\" \\\\].*", line)
-                            if m:
-                                old_suffix = m.group(1)
+                            # source on first line
+                            m1 = re.match("^SRC_URI.*\${PV}\.(.*)[\" \\\\].*", line)
+                            # SRC_URI alone on the first line
+                            m2 = re.match("^SRC_URI.*", line)
+                            # source on second line
+                            m3 = re.match(".*\${PV}\.(.*)[\" \\\\].*", line)
+                            if m1:
+                                old_suffix = m1.group(1)
                                 line = line.replace(old_suffix, new_suffix+" ")
+                            if m2 and not m1:
+                                source_found = True
+                            if m3 and source_found:
+                                old_suffix = m3.group(1)
+                                line = line.replace(old_suffix, new_suffix+" ")
+                                source_found = False
+
                             temp_recipe.write(line)
                 os.rename(full_path_f + ".tmp", full_path_f)
 
@@ -1024,7 +1037,7 @@ class Recipe(object):
                     self._remove_faulty_patch(log_file)
 
                     # retry
-                    I(" %s: Recompiling for ..." % (self.env['PN'], machine))
+                    I(" %s: Recompiling for %s ..." % (self.env['PN'], machine))
                     self.compile(machine)
                 elif failed_task == "do_configure":
                     self._undo_temporary()
@@ -1216,6 +1229,7 @@ class Updater(object):
         self.upgrade_steps = [
             (self._create_workdir, None),
             (self._detect_repo, "Detecting git repository location ..."),
+            (self._clean_repo, "Cleaning git repository of temporary branch ..."),
             (self._detect_recipe_type, None),
             (self._unpack_original, "Fetch & unpack original package ..."),
             (self._rename, "Renaming recipes, reset PR (if exists) ..."),
@@ -1264,6 +1278,7 @@ class Updater(object):
         self.recipe = recipe(self.env, self.new_ver, self.interactive, self.workdir,
                              self.recipe_dir, self.bb, self.git)
 
+
     def _create_workdir(self):
         self.workdir = self.uh_dir + "/" + self.pn
 
@@ -1296,6 +1311,11 @@ class Updater(object):
             self.git.clean_untracked()
 
             self._get_env()
+
+    def _clean_repo(self):
+        self.git.checkout_branch("master")
+        try:
+            self.git.delete_branch("remove_patches")
 
     def _unpack_original(self):
         self.recipe.unpack()
