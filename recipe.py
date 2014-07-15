@@ -582,7 +582,7 @@ class Recipe(object):
     def _undo_temporary(self):
         # Undo removed patches
         if self.removed_patches:
-            self.git.checkout_branch("master")
+            self.git.checkout_branch("upgrades")
             self.git.delete_branch("remove_patches")
             self.git.reset_hard()
             self.git.reset_soft(1)
@@ -591,8 +591,8 @@ class Recipe(object):
         try:
             self.bb.complete(self.env['PN'], machine)
             if self.removed_patches:
-                # move temporary changes into master
-                self.git.checkout_branch("master")
+                # move temporary changes into upgrades branch
+                self.git.checkout_branch("upgrades")
                 self.git.delete_branch("remove_patches")
                 self.git.reset_soft(1)
                 self.commit_msg += self.rm_patches_msg + "\n"

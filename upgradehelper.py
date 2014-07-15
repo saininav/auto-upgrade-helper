@@ -241,7 +241,10 @@ class Updater(object):
             self._get_env()
 
     def _clean_repo(self):
-        self.git.checkout_branch("master")
+        try:
+            self.git.checkout_branch("upgrades")
+        except Error:
+            self.git.create_branch("upgrades")
         try:
             self.git.delete_branch("remove_patches")
         except:
