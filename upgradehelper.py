@@ -139,6 +139,7 @@ def parse_config_file(config_file):
 
 class Updater(object):
     def __init__(self, auto_mode=False, skip_compilation=False):
+
         self.uh_dir = get_build_dir() + "/upgrade-helper"
         if not os.path.exists(self.uh_dir):
             os.mkdir(self.uh_dir)
@@ -167,7 +168,7 @@ class Updater(object):
 
         self.statistics = Statistics()
 
-        super(Updater, self).__init__()
+
 
     def _get_env(self):
         stdout = self.bb.env(self.pn)
@@ -425,7 +426,7 @@ class UniverseUpdater(Updater, Email):
         "The package has been successfully compiled for all major architectures.\n\n" \
         "Next steps:\n" \
         "    - apply the patch: git am %s\n" \
-        "    - check that required patches have not been removed from the package\n" \
+        "    - check that required patches have not been removed from the recipe\n" \
         "    - compile an image that contains the package\n" \
         "    - perform some basic sanity tests\n" \
         "    - amend the patch and sign it off: git commit -s --reset-author --amend\n" \
@@ -436,8 +437,8 @@ class UniverseUpdater(Updater, Email):
         "Regards,\nThe Upgrade Helper"
 
     def __init__(self):
-        Updater.__init__(True)
-        Email.__init__(settings)
+        Updater.__init__(self, True)
+        Email.__init__(self, settings)
         self.author = "Upgrade Helper <uh@not.set>"
         self.git = Git(os.path.dirname(os.getenv('PATH', False).split(':')[0]))
 

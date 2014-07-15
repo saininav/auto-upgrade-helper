@@ -71,6 +71,9 @@ class Bitbake(object):
     def set_log_dir(self, dir):
         self.log_dir = dir
 
+    def get_stdout_log(self):
+        return os.path.join(self.log_dir, "bitbake_log.txt")
+
     def env(self, recipe):
         return self._cmd(recipe, "-e")
 

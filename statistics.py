@@ -73,12 +73,18 @@ class Statistics(object):
                     stat_msg += "    " + pkg + ", " + new_ver + ", " + \
                                 maintainer + "\n"
 
+        if self.total_attempted == 0:
+            percent_succeded = 0
+            percent_failed = 0
+        else:
+            percent_succeded = self.succeeded["total"] * 100.0 / self.total_attempted
+            percent_failed = self.failed["total"] * 100.0 / self.total_attempted
         stat_msg += "++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
         stat_msg += "TOTAL: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
                     (self.total_attempted, self.succeeded["total"],
-                    self.succeeded["total"] * 100.0 / self.total_attempted,
+                    percent_succeded,
                     self.failed["total"],
-                    self.failed["total"] * 100.0 / self.total_attempted)
+                    percent_failed)
 
         return stat_msg
 

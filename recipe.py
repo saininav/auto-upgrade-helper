@@ -257,7 +257,7 @@ class Recipe(object):
                             if line.find(uri) == -1:
                                 temp_recipe.write(line)
                                 continue
-
+                            
                             m1 = re.match("SRC_URI *\+*= *\" *" + uri + " *\"", line)
                             m2 = re.match("(SRC_URI *\+*= *\" *)" + uri + " *\\\\", line)
                             m3 = re.match("[\t ]*" + uri + " *\\\\", line)
@@ -281,6 +281,8 @@ class Recipe(object):
                                 return False
 
                 os.rename(recipe_filename + ".tmp", recipe_filename)
+
+        return True
 
     def _remove_backported_patches(self, patch_log):
         patches_removed = False
@@ -368,12 +370,15 @@ class Recipe(object):
             return False
 
         I(" %s: Removing patch %s ..." % (self.env['PN'], patch_file))
+        reason = None
+        found = False
         dirs = [self.env['PN'] + "-" + self.env['PKGV'], self.env['PN'], "files"]
         for dir in dirs:
             patch_file_path = os.path.join(self.recipe_dir, dir, patch_file)
             if not os.path.exists(patch_file_path):
                 continue
             else:
+                found = True
                 # Find out upstream status of the patch
                 with open(patch_file_path) as patch:
                     for line in patch:
@@ -381,12 +386,18 @@ class Recipe(object):
                         if m:
                             reason = m.group(1).strip().split()[0].lower()
                 os.remove(patch_file_path)
-                self._remove_patch_uri("file://" + patch_file)
+                if not self._remove_patch_uri("file://" + patch_file):
+                    return False
+        if not found:
+            return False
 
-        self.rm_patches_msg += " * " + patch_file + " (" + reason + ") "
+        self.rm_patches_msg += " * " + patch_file
+        if reason:
+            self.rm_patches_msg += " (" + reason + ") "
         if is_reverse_applied:
             self.rm_patches_msg += "+ reverse-applied"
         self.rm_patches_msg += "\n"
+        return True
 
     def _is_license_issue(self, config_log):
         with open(config_log) as log:
@@ -400,12 +411,10 @@ class Recipe(object):
 
     def _license_issue_handled(self, config_log):
         license_file = None
-
         with open(config_log) as log:
             for line in log:
                 if not line.startswith("ERROR:"):
                     continue
-
                 m_old = re.match("ERROR: " + self.env['PN'] +
                         "[^:]*: md5 data is not matching for file://([^;]*);md5=(.*)$", line)
                 if not m_old:
@@ -414,6 +423,9 @@ class Recipe(object):
                 if not m_old:
                     m_old = re.match("ERROR: " + self.env['PN'] +
                             "[^:]*: md5 data is not matching for file://([^;]*);endline=[0-9]*;md5=(.*)$", line)
+                if not m_old:
+                    m_old = re.match("ERROR: " + self.env['PN'] +
+                            "[^:]*: md5 data is not matching for file://([^;]*);beginline=[0-9]*;md5=(.*)$", line)
                 m_new = re.match("ERROR: " + self.env['PN'] +
                         "[^:]*: The new md5 checksum is (.*)", line)
                 if m_old:
@@ -421,7 +433,7 @@ class Recipe(object):
                     old_md5 = m_old.group(2)
                 elif m_new:
                     new_md5 = m_new.group(1)
-
+        
         if license_file is not None:
             self.create_diff_file(license_file, old_md5, new_md5)
             self.license_diff_file = os.path.join(self.workdir, os.path.basename(license_file + ".diff"))
@@ -455,10 +467,15 @@ class Recipe(object):
         for line in output.split("\n"):
             machine_match = re.match("MACHINE[\t ]+= *\"(.*)\"$", line)
             task_log_match = re.match("ERROR: Logfile of failure stored in: (.*/([^/]*)/[^/]*/temp/log\.(.*)\.[0-9]*)", line)
+            # For some reason do_package is reported differently
+            qa_issue_match = re.match("ERROR: QA Issue: ([^ :]*): (.*) not shipped", line)
 
-            if task_log_match is not None:
+            if task_log_match:
                 failed_tasks[task_log_match.group(2)] = (task_log_match.group(3), task_log_match.group(1))
-            elif machine_match is not None:
+            elif qa_issue_match:
+                # Improvise path to log file
+                failed_tasks[qa_issue_match.group(1)] = ("do_package", self.bb.get_stdout_log()) 
+            elif machine_match:
                 machine = machine_match.group(1)
 
         # we didn't detect any failed tasks? then something else is wrong
@@ -651,7 +668,7 @@ class Recipe(object):
             if self._is_incompatible_host(e.stdout):
                 W(" %s: compilation failed: incompatible host" % self.env['PN'])
                 return
-
+            print("before _get_failed_recipes")
             machine, failed_recipes = self._get_failed_recipes(e.stdout)
             if not self.env['PN'] in failed_recipes:
                 if not self._clean_failed_recipes(failed_recipes):
@@ -671,7 +688,9 @@ class Recipe(object):
                         self.git.create_branch("remove_patches")
                         self.git.checkout_branch("remove_patches")
                         self.removed_patches = True
-                    self._remove_faulty_patch(log_file)
+                    if not self._remove_faulty_patch(log_file):
+                        self._undo_temporary()
+                        raise PatchError()
 
                     # retry
                     I(" %s: Recompiling for %s ..." % (self.env['PN'], machine))
