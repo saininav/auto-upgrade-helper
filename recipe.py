@@ -284,73 +284,6 @@ class Recipe(object):
 
         return True
 
-    def _remove_backported_patches(self, patch_log):
-        patches_removed = False
-        commit_msg = "\n\nRemoved the following patch(es):\n"
-
-        reverse_applied = []
-
-        with open(patch_log) as log:
-            for line in log:
-                m = re.match("Patch ([^ ]*) can be reverse-applied", line)
-                if m is not None:
-                    reverse_applied.append(m.group(1))
-
-        for uri in self.env['SRC_URI'].split():
-            if not uri.startswith("file://"):
-                continue
-
-            patch_file = uri.split("//")[1]
-            remove_reason = "backport"
-            patch_delete = False
-
-            # delete the file, if it's a backported patch
-            dirs = [self.env['PN'] + "-" + self.env['PKGV'], self.env['PN'], "files"]
-            for dir in dirs:
-                patch_file_path = os.path.join(self.recipe_dir, dir, patch_file)
-                if not os.path.exists(patch_file_path):
-                    continue
-
-                with open(patch_file_path) as patch:
-                    for line in patch:
-                        if line.find("Upstream-Status: Backport") != -1:
-                            patch_delete = True
-                            break
-
-                if not patch_delete and patch_file in reverse_applied:
-                    patch_delete = True
-                    remove_reason = "changes included in release"
-
-                if patch_delete:
-                    os.remove(patch_file_path)
-                    patches_removed = True
-
-                    # if the patches directory is empty, remove it
-                    try:
-                        os.rmdir(os.path.join(self.recipe_dir, dir))
-                    except OSError:
-                        pass
-
-                    break
-
-            if not patch_delete:
-                continue
-
-            self._remove_patch_uri(uri)
-
-            commit_msg += " * " + patch_file + " (" + remove_reason + ")\n"
-
-        commit_msg += "\n"
-
-        # if we removed any backported patches, return 0, so we can
-        # re-compile and see what happens
-        if patches_removed:
-            I(" %s: removed some backported patches, retrying ...", self.env['PN'])
-            self.commit_msg += commit_msg
-            return True
-
-        return False
-
     def _remove_faulty_patch(self, patch_log):
         patch_file = None
         is_reverse_applied = False
@@ -654,7 +587,6 @@ class Recipe(object):
             self.git.reset_hard()
             self.git.reset_soft(1)
 
-
     def compile(self, machine):
         try:
             self.bb.complete(self.env['PN'], machine)
@@ -668,7 +600,6 @@ class Recipe(object):
             if self._is_incompatible_host(e.stdout):
                 W(" %s: compilation failed: incompatible host" % self.env['PN'])
                 return
-            print("before _get_failed_recipes")
             machine, failed_recipes = self._get_failed_recipes(e.stdout)
             if not self.env['PN'] in failed_recipes:
                 if not self._clean_failed_recipes(failed_recipes):
