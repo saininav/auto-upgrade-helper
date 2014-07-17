@@ -451,6 +451,7 @@ class UniverseUpdater(Updater, Email):
         if os.path.exists(self.history_file):
             with open(self.history_file) as history_file:
                 for line in history_file:
+                    line = line.strip()
                     self.history[line.split(',')[0]] = [line.split(',')[1],
                                                         line.split(',')[2],
                                                         line.split(',')[3],
@@ -483,8 +484,8 @@ class UniverseUpdater(Updater, Email):
                     date.toordinal(datetime.strptime(self.history[pn][2], '%Y-%m-%d'))
                 # retry packages that had fetch errors or other errors after
                 # more than 7 days
-                if (self.history[pn][3] == str(FetchError) or
-                        self.history[pn][3] == str(Error)) and retry_delta > 7:
+                if (self.history[pn][3] == str(FetchError()) or
+                        self.history[pn][3] == str(Error())) and retry_delta > 7:
                     return True
 
                 return False
@@ -549,10 +550,6 @@ class UniverseUpdater(Updater, Email):
             I(" Using last checkpkg.csv file since last master commit and last"
               " check date are the same ...")
 
-        with open(get_build_dir() + "/upgrade-helper/last_checkpkg_run", "w+") as last_check:
-            last_check.write(current_date + "," + cur_master_commit + "," +
-                             last_checkpkg_file)
-
         pkgs_list = []
 
         with open(last_checkpkg_file, "r") as csv:
@@ -563,6 +560,12 @@ class UniverseUpdater(Updater, Email):
                         next_ver != "INVALID":
                     if self.pkg_upgradable(pn, next_ver, maintainer):
                         pkgs_list.append((pn, next_ver, maintainer))
+
+        # Update last_checkpkg_run only after the version check has been completed
+        with open(get_build_dir() + "/upgrade-helper/last_checkpkg_run", "w+") as last_check:
+            last_check.write(current_date + "," + cur_master_commit + "," +
+                             last_checkpkg_file)
+
 
         print("########### The list of packages to be upgraded ############")
         for p, v, m in pkgs_list:
