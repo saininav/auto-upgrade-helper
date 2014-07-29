@@ -7,7 +7,7 @@
 #
 # 00 8   * * 6   marius  /home/marius/work/yocto_package_upgrade_helper-main/weeklyjob.sh
 
-BUILDIR=/media/SSD/build2/
+BUILDIR=/media/SSD/build3/
 POKYSOURCE=/home/marius/work/poky_http/poky/oe-init-build-env
 UPGRADESCRIPT=/home/marius/work/yocto_package_upgrade_helper-main/upgradehelper.py
 LOGFILE=/home/marius/work/yocto_package_upgrade_helper-main/upgradehelper.log

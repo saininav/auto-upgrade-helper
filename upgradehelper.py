@@ -118,6 +118,8 @@ def parse_config_file(config_file):
     else:
         cfg_file = os.path.join(get_build_dir(), "upgrade-helper", "upgrade-helper.conf")
 
+    print("cfg_file %s" % cfg_file)
+
     if os.path.exists(cfg_file):
         cfg = cp.ConfigParser()
         cfg.read(cfg_file)
@@ -151,8 +153,7 @@ class Updater(object):
         self.skip_compilation = skip_compilation
         self.interactive = not auto_mode
 
-        #self.machines = ["qemux86", "qemux86-64", "qemuarm", "qemumips", "qemuppc"]
-        self.machines = ["qemux86"]
+        self.machines = ["qemux86", "qemux86-64", "qemuarm", "qemumips", "qemuppc"]
 
         self.upgrade_steps = [
             (self._create_workdir, None),
