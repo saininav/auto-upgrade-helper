@@ -49,40 +49,45 @@ from recipe import Recipe
 from gitrecipe import GitRecipe
 from svnrecipe import SvnRecipe
 
-help_text = \
-    "Usage examples:\n\n" \
-    "* To upgrade xmodmap package to the latest available version, interactively:\n" \
-    "    $ upgrade-helper.py xmodmap\n\n" \
-    "* To upgrade xmodmap package to a user specified version, interactively:\n" \
-    "    $ upgrade-helper.py xmodmap -t 1.2.3\n\n" \
-    "* To upgrade a list of packages in automatic mode:\n" \
-    "    $ upgrade-helper.py -a xmodmap xf86-video-intel\n\n" \
-    "* To attempt to upgrade all packages and automatically send email messages\n" \
-    "  to maintainers for each attempted package as well as a status mail at the\n" \
-    "  end, use:\n" \
-    "    $ upgrade-helper.py all\n\n" \
-    "  For this to work properly, an upgrade-helper.conf file has to be prepared,\n" \
-    "  in BUILDIR/conf/upgrade-helper, as below:\n\n" \
-    "   [maintainer_override]\n" \
-    "   # mails for package upgrades will go to john.doe instead of jane.doe, etc\n" \
-    "   jane.doe@doe.com=john.doe@doe.com\n" \
-    "   johhny.bravo@bravo.com=john.doe@doe.com\n\n" \
-    "   [settings]\n" \
-    "   # packages in blacklist will be skipped\n" \
-    "   blacklist=python glibc gcc\n" \
-    "   # only packages belonging to maintainers in whitelist will be attempted\n" \
-    "   maintainers_whitelist=jane.doe@doe.com john.doe@doe.com johhny.bravo@bravo.com\n" \
-    "   smtp=smtp.my-server.com:25\n" \
-    "   # from whom should the mails arrive\n" \
-    "   from=upgrade.helper@my-server.com\n" \
-    "   # who should get the status mail with statistics, at the end\n" \
-    "   status_recipients=john.doe@doe.com\n" \
-    "   # clean sstate directory before upgrading\n" \
-    "   clean_sstate=yes\n" \
-    "   # clean tmp directory before upgrading\n" \
-    "   clean_tmp=yes\n" \
-    "   # keep previous commits or not\n" \
-    "   drop_previous_commits=yes\n"
+help_text = """Usage examples:
+* To upgrade xmodmap package to the latest available version, interactively:
+    $ upgrade-helper.py xmodmap
+
+* To upgrade xmodmap package to a user specified version, interactively:
+    $ upgrade-helper.py xmodmap -t 1.2.3
+
+* To upgrade a list of packages in automatic mode:
+    $ upgrade-helper.py -a xmodmap xf86-video-intel
+
+* To attempt to upgrade all packages and automatically send email messages
+  to maintainers for each attempted package as well as a status mail at the
+  end, use:
+    $ upgrade-helper.py all
+
+For this to work properly, an upgrade-helper.conf file has to be prepared,
+in $BUILDDIR/upgrade-helper, as below:
+
+  [maintainer_override]
+  # mails for package upgrades will go to john.doe instead of jane.doe, etc
+  jane.doe@doe.com=john.doe@doe.com
+  johhny.bravo@bravo.com=john.doe@doe.com
+
+  [settings]
+  # packages in blacklist will be skipped
+  blacklist=python glibc gcc
+  # only packages belonging to maintainers in whitelist will be attempted
+  maintainers_whitelist=jane.doe@doe.com john.doe@doe.com johhny.bravo@bravo.com
+  smtp=smtp.my-server.com:25
+  # from whom should the mails arrive
+  from=upgrade.helper@my-server.com
+  # who should get the status mail with statistics, at the end
+  status_recipients=john.doe@doe.com
+  # clean sstate directory before upgrading
+  clean_sstate=yes
+  # clean tmp directory before upgrading
+  clean_tmp=yes
+  # keep previous commits or not
+  drop_previous_commits=yes"""
 
 
 def parse_cmdline():
