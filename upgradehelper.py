@@ -685,6 +685,10 @@ if __name__ == "__main__":
     log.basicConfig(format='%(levelname)s:%(message)s',
                     level=debug_levels[args.debug_level - 1])
 
+    if not os.getenv('BUILDDIR', False):
+        E(" You must source oe-init-build-env before running this script!\n")
+        exit(1)
+
     settings, maintainer_override = parse_config_file(args.config_file)
 
     if len(args.package) == 1 and args.package[0] == "all":

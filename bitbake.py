@@ -34,10 +34,6 @@ for path in os.environ["PATH"].split(':'):
         sys.path.insert(0, os.path.join(path, "../lib"))
         import bb
 
-if not os.getenv('BUILDDIR', False):
-    E(" You must source oe-init-build-env before running this script!\n")
-    exit(1)
-
 class Bitbake(object):
     def __init__(self, build_dir):
         self.build_dir = build_dir
