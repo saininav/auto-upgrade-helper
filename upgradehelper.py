@@ -617,8 +617,8 @@ class UniverseUpdater(Updater, Email):
         # Add possible attachments to list
         attachments = []
         for attachment in os.listdir(self.workdir):
-            attachment_fullpath = os.join(self.workdir, attachment)
-            if isfile(attachment_fullpath):
+            attachment_fullpath = os.path.join(self.workdir, attachment)
+            if os.path.isfile(attachment_fullpath):
                 attachments.append(attachment_fullpath)
 
         self.send_email(to_addr, subject, msg_body, attachments)
