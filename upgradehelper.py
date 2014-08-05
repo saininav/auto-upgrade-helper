@@ -103,8 +103,8 @@ def parse_cmdline():
                         help="set the debug level: CRITICAL=1, ERROR=2, WARNING=3, INFO=4, DEBUG=5")
     parser.add_argument("-s", "--skip-compilation", action="store_true", default=False,
                         help="do not compile, just change the checksums, remove PR, and commit")
-    parser.add_argument("-c", "--config-file", default="upgrade-helper.conf",
-                        help="Path to the configuration file. Default is BUILDDIR/upgrade-helper/upgrade-helper.py")
+    parser.add_argument("-c", "--config-file", default=None,
+                        help="Path to the configuration file. Default is $BUILDDIR/upgrade-helper/upgrade-helper.conf")
     return parser.parse_args()
 
 
@@ -116,17 +116,17 @@ def parse_config_file(config_file):
     settings = dict()
     maintainer_override = dict()
 
-    if config_file is not None:
+    if config_file:
         if os.path.exists(config_file):
             cfg_file = config_file
         else:
-            cfg_file = os.path.join(get_build_dir(), "upgrade-helper", config_file)
+            C("Unable to find specified config file %s" % config_file)
+            sys.exit(1)
     else:
         cfg_file = os.path.join(get_build_dir(), "upgrade-helper", "upgrade-helper.conf")
 
-    print("cfg_file %s" % cfg_file)
-
     if os.path.exists(cfg_file):
+        D("Reading config file %s" % cfg_file)
         cfg = cp.ConfigParser()
         cfg.read(cfg_file)
         try:
