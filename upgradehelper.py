@@ -97,7 +97,7 @@ def parse_cmdline():
     parser.add_argument("package", nargs="+", help="package to be upgraded")
     parser.add_argument("-t", "--to_version",
                         help="version to upgrade the package to")
-    parser.add_argument("-a", "--auto_mode", action="store_true", default=False,
+    parser.add_argument("-a", "--auto-mode", action="store_true", default=False,
                         help="disable interactive mode")
     parser.add_argument("-d", "--debug-level", type=int, default=4, choices=range(1, 6),
                         help="set the debug level: CRITICAL=1, ERROR=2, WARNING=3, INFO=4, DEBUG=5")
