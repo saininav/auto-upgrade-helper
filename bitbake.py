@@ -27,6 +27,7 @@ import logging as log
 from logging import info as I
 from logging import debug as D
 from logging import error as E
+from logging import critical as C
 import sys
 from errors import *
 
@@ -115,13 +116,20 @@ class BuildHistory(object):
         try:
             stdout, stderr = bb.process.run(cmd)
             # Write diff output to log file if there is any
+
             if stdout and os.path.exists(self.work_dir):
                 with open(os.path.join(self.work_dir, "buildhistory.txt"), "w+") as log:
                     log.write(stdout)
                 return True
         except bb.process.ExecutionError as e:
-            D("%s returned:\n%s" % (cmd, e.__str__()))
-            raise Error("\'" + cmd + "\' failed", e.stdout, e.stderr)
+            for line in e.stdout.split('\n'):
+                if line.find("Buildhistory directory \"buildhistory/\" does not exist") == 0:
+                    C(" \"buildhistory.bbclass\" not inherited. Consider adding "
+                      "the following to your local.conf:\n\n"
+                      "INHERIT =+ \"buildhistory\"\n"
+                      "BUILDHISTORY_COMMIT = \"1\"\n\n"
+                      "Do not remove any other inherited class in the process (e.g. distrodata)\n")
+                    exit(1)
 
         return False
 
