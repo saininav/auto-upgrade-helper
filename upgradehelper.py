@@ -53,41 +53,11 @@ help_text = """Usage examples:
 * To upgrade xmodmap recipe to the latest available version, interactively:
     $ upgrade-helper.py xmodmap
 
-* To upgrade xmodmap recipe to a user specified version, interactively:
-    $ upgrade-helper.py xmodmap -t 1.2.3
-
-* To upgrade a list of recipes in automatic mode:
-    $ upgrade-helper.py -a xmodmap xf86-video-intel
-
 * To attempt to upgrade all recipes and automatically send email messages
   to maintainers for each attempted recipe as well as a status mail at the
   end, use:
     $ upgrade-helper.py all
-
-For this to work properly, an upgrade-helper.conf file has to be prepared,
-in $BUILDDIR/upgrade-helper, as below:
-
-  [maintainer_override]
-  # mails for recipe upgrades will go to john.doe instead of jane.doe, etc
-  jane.doe@doe.com=john.doe@doe.com
-  johhny.bravo@bravo.com=john.doe@doe.com
-
-  [settings]
-  # recipes in blacklist will be skipped
-  blacklist=python glibc gcc
-  # only recipes belonging to maintainers in whitelist will be attempted
-  maintainers_whitelist=jane.doe@doe.com john.doe@doe.com johhny.bravo@bravo.com
-  smtp=smtp.my-server.com:25
-  # from whom should the mails arrive
-  from=upgrade.helper@my-server.com
-  # who should get the status mail with statistics, at the end
-  status_recipients=john.doe@doe.com
-  # clean sstate directory before upgrading
-  clean_sstate=yes
-  # clean tmp directory before upgrading
-  clean_tmp=yes
-  # keep previous commits or not
-  drop_previous_commits=yes"""
+"""
 
 
 def parse_cmdline():

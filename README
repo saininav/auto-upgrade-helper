@@ -1,0 +1,93 @@
+Automatic Upgrade Helper
+========================
+
+This is a utility designed to be used in conjunction with the
+OpenEmbedded build system (BitBake and OE-Core) in order to
+automatically generate upgrades for recipes based on new versions being
+published upstream.
+
+
+Setup
+-----
+
+1. Ensure you have a working copy of the build system that is configured
+   and ready to run, i.e. you've run the oe-init-build-env script to
+   create a build directory and edited local.conf / bblayers.conf as
+   desired.
+
+2. Prepare a configuration file, by default in $BUILDDIR/upgrade-helper,
+   as below:
+
+--------------- snip ---------------
+[maintainer_override]
+# mails for recipe upgrades will go to john.doe instead of jane.doe, etc
+jane.doe@doe.com=john.doe@doe.com
+johhny.bravo@bravo.com=john.doe@doe.com
+
+[settings]
+# recipes in blacklist will be skipped
+blacklist=python glibc gcc
+# only recipes belonging to maintainers in whitelist will be attempted
+maintainers_whitelist=jane.doe@doe.com john.doe@doe.com johhny.bravo@bravo.com
+# SMTP server
+smtp=smtp.my-server.com:25
+# from whom should the mails arrive
+from=upgrade.helper@my-server.com
+# who should get the status mail with statistics, at the end
+status_recipients=john.doe@doe.com
+# clean sstate directory before upgrading
+clean_sstate=yes
+# clean tmp directory before upgrading
+clean_tmp=yes
+# keep previous commits or not
+drop_previous_commits=yes
+--------------- snip ---------------
+
+
+Usage
+-----
+
+Some manual usage examples:
+
+* To upgrade the xmodmap recipe to the latest available version,
+  interactively:
+    $ upgrade-helper.py xmodmap
+
+* To upgrade the xmodmap recipe to a user specified version,
+  interactively:
+    $ upgrade-helper.py xmodmap -t 1.2.3
+
+* To upgrade a list of recipes in automatic mode:
+    $ upgrade-helper.py -a xmodmap xf86-video-intel
+
+* To attempt to upgrade all recipes and automatically send email
+  messages to maintainers for each attempted recipe as well as a
+  status mail at the end, use:
+    $ upgrade-helper.py all
+
+If you wish to run the script on a regular basis, you can set up a cron
+job; the "weeklyjob.sh" file distributed with this project is the basis
+of a script you can call from a cron job and also provides an example
+crontab line.
+
+
+Maintenance
+-----------
+
+The code for this application is maintained by the Yocto Project.
+
+The latest version of the code can always be found here:
+
+  http://git.yoctoproject.org/cgit/cgit.cgi/auto-upgrade-helper/
+
+Contributions are welcome. Please send patches / pull requests to
+yocto@yoctoproject.org with '[auh]' in the subject.
+
+
+License
+-------
+
+This application is licensed under the GNU General Public License
+version 2.0 or (at your option) any later version. Please see the
+LICENSE file for further details.
+
