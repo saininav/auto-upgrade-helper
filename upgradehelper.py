@@ -263,11 +263,7 @@ class Updater(object):
                 if line.find("ERROR: Task do_checkpkg does not exist") == 0:
                     C(" \"distrodata.bbclass\" not inherited. Consider adding "
                       "the following to your local.conf:\n\n"
-                      "INHERIT =+ \"distrodata\"\n"
-                      "require conf/distro/include/recipe_color.inc\n"
-                      "require conf/distro/include/distro_alias.inc\n"
-                      "require conf/distro/include/maintainers.inc\n"
-                      "require conf/distro/include/upstream_tracking.inc\n")
+                      "INHERIT =+ \"distrodata\"\n")
                     exit(1)
 
     def _get_packages_to_upgrade(self, packages=None):

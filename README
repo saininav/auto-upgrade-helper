@@ -43,6 +43,24 @@ clean_tmp=yes
 drop_previous_commits=yes
 --------------- snip ---------------
 
+3. Enable distrodata and supply appropriate additional metadata. For
+   example, you could add the following to your conf/local.conf:
+
+--------------- snip ---------------
+INHERIT =+ "distrodata"
+require conf/distro/include/recipe_color.inc
+require conf/distro/include/distro_alias.inc
+require conf/distro/include/maintainers.inc
+require conf/distro/include/upstream_tracking.inc
+--------------- snip ---------------
+
+WARNING: if you are using the default maintainers.inc file supplied
+         with Poky (in meta-yocto) and you don't set a
+         maintainers_whitelist or maintainer_override in the
+         upgrade-helper configuration as above, the script will
+         automatically send out emails to the default maintainers.
+         Please be careful not to do this :)
+
 
 Usage
 -----
