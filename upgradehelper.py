@@ -18,7 +18,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 # DESCRIPTION
-#  This is a package upgrade helper script for the Yocto Project.
+#  This is a recipe upgrade helper script for the Yocto Project.
 #  Use 'upgrade-helper.py -h' for more help.
 #
 # AUTHORS
@@ -50,17 +50,17 @@ from gitrecipe import GitRecipe
 from svnrecipe import SvnRecipe
 
 help_text = """Usage examples:
-* To upgrade xmodmap package to the latest available version, interactively:
+* To upgrade xmodmap recipe to the latest available version, interactively:
     $ upgrade-helper.py xmodmap
 
-* To upgrade xmodmap package to a user specified version, interactively:
+* To upgrade xmodmap recipe to a user specified version, interactively:
     $ upgrade-helper.py xmodmap -t 1.2.3
 
-* To upgrade a list of packages in automatic mode:
+* To upgrade a list of recipes in automatic mode:
     $ upgrade-helper.py -a xmodmap xf86-video-intel
 
-* To attempt to upgrade all packages and automatically send email messages
-  to maintainers for each attempted package as well as a status mail at the
+* To attempt to upgrade all recipes and automatically send email messages
+  to maintainers for each attempted recipe as well as a status mail at the
   end, use:
     $ upgrade-helper.py all
 
@@ -68,14 +68,14 @@ For this to work properly, an upgrade-helper.conf file has to be prepared,
 in $BUILDDIR/upgrade-helper, as below:
 
   [maintainer_override]
-  # mails for package upgrades will go to john.doe instead of jane.doe, etc
+  # mails for recipe upgrades will go to john.doe instead of jane.doe, etc
   jane.doe@doe.com=john.doe@doe.com
   johhny.bravo@bravo.com=john.doe@doe.com
 
   [settings]
-  # packages in blacklist will be skipped
+  # recipes in blacklist will be skipped
   blacklist=python glibc gcc
-  # only packages belonging to maintainers in whitelist will be attempted
+  # only recipes belonging to maintainers in whitelist will be attempted
   maintainers_whitelist=jane.doe@doe.com john.doe@doe.com johhny.bravo@bravo.com
   smtp=smtp.my-server.com:25
   # from whom should the mails arrive
@@ -94,9 +94,9 @@ def parse_cmdline():
     parser = argparse.ArgumentParser(description='Package Upgrade Helper',
                                      formatter_class=argparse.RawTextHelpFormatter,
                                      epilog=help_text)
-    parser.add_argument("package", nargs="+", help="package to be upgraded")
+    parser.add_argument("recipe", nargs="+", help="recipe to be upgraded")
     parser.add_argument("-t", "--to_version",
-                        help="version to upgrade the package to")
+                        help="version to upgrade the recipe to")
     parser.add_argument("-a", "--auto-mode", action="store_true", default=False,
                         help="disable interactive mode")
     parser.add_argument("-d", "--debug-level", type=int, default=4, choices=range(1, 6),
@@ -166,10 +166,10 @@ class Updater(object):
             (self._detect_repo, "Detecting git repository location ..."),
             (self._clean_repo, "Cleaning git repository of temporary branch ..."),
             (self._detect_recipe_type, None),
-            (self._unpack_original, "Fetch & unpack original package ..."),
+            (self._unpack_original, "Fetch & unpack original version ..."),
             (self._rename, "Renaming recipes, reset PR (if exists) ..."),
             (self._cleanall, "Clean all ..."),
-            (self._fetch, "Fetch new package (old checksums) ..."),
+            (self._fetch, "Fetch new version (old checksums) ..."),
             (self._compile, None)
         ]
 
@@ -330,7 +330,7 @@ class Updater(object):
 
         return pkgs_list
 
-    # this function will be called at the end of each package upgrade
+    # this function will be called at the end of each recipe upgrade
     def pkg_upgrade_handler(self, err):
         if err is not None and self.patch_file is not None:
             answer = "N"
@@ -415,7 +415,7 @@ class Updater(object):
             self.statistics.update(self.pn, self.new_ver, self.maintainer, error)
 
             if self.interactive and attempted_pkgs < total_pkgs:
-                I(" %s: Proceed to next package? (Y/n)" % self.pn)
+                I(" %s: Proceed to next recipe? (Y/n)" % self.pn)
                 answer = sys.stdin.readline().strip().upper()
 
                 if answer != 'Y' and answer != '':
@@ -429,11 +429,11 @@ class Updater(object):
 class UniverseUpdater(Updater, Email):
     mail_header = \
         "Hello,\n\nYou are receiving this email because you are the maintainer\n" \
-        "of *%s* package and this is to let you know that the automatic attempt\n" \
-        "to upgrade the package to *%s* has %s.\n\n"
+        "of *%s* recipe and this is to let you know that the automatic attempt\n" \
+        "to upgrade the recipe to *%s* has %s.\n\n"
 
     next_steps_info = \
-        "The package has been successfully compiled for all major architectures.\n\n" \
+        "The recipe has been successfully compiled for all major architectures.\n\n" \
         "Next steps:\n" \
         "    - apply the patch: git am %s\n" \
         "    - check that required patches have not been removed from the recipe\n" \
@@ -464,8 +464,8 @@ class UniverseUpdater(Updater, Email):
                                                         line.split(',')[3],
                                                         line.split(',')[4]]
 
-    # checks if maintainer is in whitelist and that the package itself is not
-    # blacklisted: python, gcc, etc. Also, check the history if the package
+    # checks if maintainer is in whitelist and that the recipe itself is not
+    # blacklisted: python, gcc, etc. Also, check the history if the recipe
     # hasn't already been tried
     def pkg_upgradable(self, pn, next_ver, maintainer):
         if "blacklist" in settings:
@@ -489,7 +489,7 @@ class UniverseUpdater(Updater, Email):
                 retry_delta = \
                     date.toordinal(date.today()) - \
                     date.toordinal(datetime.strptime(self.history[pn][2], '%Y-%m-%d'))
-                # retry packages that had fetch errors or other errors after
+                # retry recipes that had fetch errors or other errors after
                 # more than 7 days
                 if (self.history[pn][3] == str(FetchError()) or
                         self.history[pn][3] == str(Error())) and retry_delta > 7:
@@ -497,8 +497,8 @@ class UniverseUpdater(Updater, Email):
 
                 return False
 
-        # drop native/cross/cross-canadian packages. We deal with native
-        # when upgrading the main package but we keep away of cross* pkgs...
+        # drop native/cross/cross-canadian recipes. We deal with native
+        # when upgrading the main recipe but we keep away of cross* pkgs...
         # for now
         if pn.find("cross") != -1 or pn.find("native") != -1:
             return False
@@ -574,7 +574,7 @@ class UniverseUpdater(Updater, Email):
                              last_checkpkg_file)
 
 
-        print("########### The list of packages to be upgraded ############")
+        print("########### The list of recipes to be upgraded ############")
         for p, v, m in pkgs_list:
             print("%s,%s,%s" % (p, v, m))
         print("############################################################")
@@ -603,7 +603,7 @@ class UniverseUpdater(Updater, Email):
         status = type(err).__name__
 
         # drop last upgrade from git. It's safer this way if the upgrade has
-        # problems and other packages depend on it. Give the other packages a
+        # problems and other recipes depend on it. Give the other recipes a
         # chance...
         if ("drop_previous_commits" in settings and
                 settings["drop_previous_commits"] == "yes" and
@@ -664,7 +664,7 @@ class UniverseUpdater(Updater, Email):
         if self.statistics.total_attempted:
             self.send_email(to_list, subject, msg)
         else:
-            W("No packages attempted, not sending status mail!")
+            W("No recipes attempted, not sending status mail!")
 
     def run(self):
         self.update_master()
@@ -691,15 +691,15 @@ if __name__ == "__main__":
 
     settings, maintainer_override = parse_config_file(args.config_file)
 
-    if len(args.package) == 1 and args.package[0] == "all":
+    if len(args.recipe) == 1 and args.recipe[0] == "all":
         updater = UniverseUpdater()
         updater.run()
-    elif len(args.package) >= 1:
-        if len(args.package) == 1:
-            pkg_list = [(args.package[0], args.to_version, None)]
+    elif len(args.recipe) >= 1:
+        if len(args.recipe) == 1:
+            pkg_list = [(args.recipe[0], args.to_version, None)]
         else:
             pkg_list = []
-            for pkg in args.package:
+            for pkg in args.recipe:
                 pkg_list.append((pkg, None, None))
 
         updater = Updater(args.auto_mode, args.skip_compilation)
