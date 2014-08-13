@@ -42,7 +42,7 @@ from datetime import date
 import shutil
 from errors import *
 from git import Git
-from bitbake import Bitbake
+from bitbake import Bitbake, BuildHistory
 from emailhandler import Email
 from statistics import Statistics
 from recipe import Recipe
@@ -123,6 +123,7 @@ class Updater(object):
             os.mkdir(self.uh_dir)
 
         self.bb = Bitbake(get_build_dir())
+        self.buildhistory = BuildHistory(get_build_dir())
         self.git = None
 
         self.author = None
@@ -252,6 +253,14 @@ class Updater(object):
         for machine in self.machines:
             I(" %s: compiling for %s ..." % (self.pn, machine))
             self.recipe.compile(machine)
+
+    def _review(self):
+        # Check build_history
+        if not self.skip_compilation:
+            I(" %s: Checking buildhistory ..." % self.pn)
+            self.buildhistory.set_work_dir(self.workdir)
+            if self.buildhistory.diff(len(self.machines)):
+               I(" %s: Wrote buildhistory-diff output ..." % self.pn)
 
     def _check_upstream_versions(self, packages=[("universe", None, None)]):
         I(" Fetching upstream version(s) ...")
@@ -605,14 +614,12 @@ class UniverseUpdater(Updater, Email):
 
         msg_body += self.mail_footer
 
+        # Add possible attachments to list
         attachments = []
-        if self.patch_file is not None:
-            attachments.append(self.patch_file)
-        # License issue
-        if status == "LicenseError":
-            attachments.append(self.recipe.license_diff_file)
-        elif err is not None:
-            attachments.append(os.path.join(self.workdir, "bitbake_log.txt"))
+        for attachment in os.listdir(self.workdir):
+            attachment_fullpath = os.join(self.workdir, attachment)
+            if isfile(attachment_fullpath):
+                attachments.append(attachment_fullpath)
 
         self.send_email(to_addr, subject, msg_body, attachments)
 

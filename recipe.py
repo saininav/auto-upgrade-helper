@@ -408,7 +408,7 @@ class Recipe(object):
                 failed_tasks[task_log_match.group(2)] = (task_log_match.group(3), task_log_match.group(1))
             elif qa_issue_match:
                 # Improvise path to log file
-                failed_tasks[qa_issue_match.group(1)] = ("do_package", self.bb.get_stdout_log()) 
+                failed_tasks[qa_issue_match.group(1)] = ("do_package", self.bb.get_stdout_log())
             elif machine_match:
                 machine = machine_match.group(1)
 
@@ -647,4 +647,3 @@ class Recipe(object):
                     # throw a compilation exception for everything else. It
                     # doesn't really matter
                     raise CompilationError()
-

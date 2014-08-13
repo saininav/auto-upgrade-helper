@@ -24,6 +24,7 @@
 
 import os
 import logging as log
+from logging import info as I
 from logging import debug as D
 from logging import error as E
 import sys
@@ -97,3 +98,30 @@ class Bitbake(object):
 
     def dependency_graph(self, package_list):
         return self._cmd(package_list, "-g")
+
+class BuildHistory(object):
+    def __init__(self, build_dir):
+        self.build_dir = build_dir
+        self.work_dir = None
+
+    def set_work_dir(self, work_dir):
+        self.work_dir = work_dir
+
+    # Return True if buildhistory-diff gives output
+    def diff(self, revision_steps):
+        os.chdir(self.build_dir)
+        cmd = "buildhistory-diff HEAD~" + str(revision_steps)
+
+        try:
+            stdout, stderr = bb.process.run(cmd)
+            # Write diff output to log file if there is any
+            if stdout and os.path.exists(self.work_dir):
+                with open(os.path.join(self.work_dir, "buildhistory.txt"), "w+") as log:
+                    log.write(stdout)
+                return True
+        except bb.process.ExecutionError as e:
+            D("%s returned:\n%s" % (cmd, e.__str__()))
+            raise Error("\'" + cmd + "\' failed", e.stdout, e.stderr)
+
+        return False
+
