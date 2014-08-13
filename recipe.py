@@ -452,11 +452,15 @@ class Recipe(object):
           "/usr/lib/opie"   : "palmqtdir",
         }
 
+        I(" %s: Add new files in recipe ..." %  self.env['PN'])
         with open(package_log) as log:
             for line in log:
                 if re.match(".*Files/directories were installed but not shipped.*", line):
                     files_not_shipped = True
+                # Extract path
                 line = line.strip()
+                if line:
+                    line = line.split()[0]
                 if files_not_shipped and os.path.isabs(line):
                     # Count occurences for globbing
                     path_exists = False
@@ -587,6 +591,7 @@ class Recipe(object):
             self.git.delete_branch("remove_patches")
             self.git.reset_hard()
             self.git.reset_soft(1)
+            self.removed_patches = False
 
     def compile(self, machine):
         try:
@@ -597,6 +602,7 @@ class Recipe(object):
                 self.git.delete_branch("remove_patches")
                 self.git.reset_soft(1)
                 self.commit_msg += self.rm_patches_msg + "\n"
+                self.removed_patches = False
         except Error as e:
             if self._is_incompatible_host(e.stdout):
                 W(" %s: compilation failed: incompatible host" % self.env['PN'])
