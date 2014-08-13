@@ -61,6 +61,16 @@ WARNING: if you are using the default maintainers.inc file supplied
          automatically send out emails to the default maintainers.
          Please be careful not to do this :)
 
+4. Enable buildhistory by adding the following lines to your
+conf/local.conf file:
+
+--------------- snip ---------------
+INHERIT =+ "buildhistory"
+BUILDHISTORY_COMMIT" = "1"
+--------------- snip ---------------
+
+(Do not remove any other inherited class in the process, e.g. distrodata).
+
 
 Usage
 -----
