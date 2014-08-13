@@ -388,7 +388,7 @@ class Recipe(object):
                 W(" %s: license checksum failed for file %s."
                   " The recipe has been updated! Diff file located at %s" %
                   (self.env['PN'], license_file, self.license_diff_file))
-                I(" recompiling ...")
+                I(" Recompiling ...")
                 self.commit_msg += "License checksum changed for file " + license_file
                 return True
 

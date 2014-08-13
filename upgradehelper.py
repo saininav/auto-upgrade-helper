@@ -367,20 +367,20 @@ class Updater(object):
             attempted_pkgs += 1
             I(" ATTEMPT PACKAGE %d/%d" % (attempted_pkgs, total_pkgs))
             try:
-                I(" %s: upgrading to %s" % (self.pn, self.new_ver))
+                I(" %s: Upgrading to %s" % (self.pn, self.new_ver))
                 for step, msg in self.upgrade_steps:
                     if msg is not None:
                         I(" %s: %s" % (self.pn, msg))
                     step()
 
-                I(" %s: upgrade SUCCESSFUL! Please test!" % self.pn)
+                I(" %s: Upgrade SUCCESSFUL! Please test!" % self.pn)
                 error = None
             except UpgradeNotNeededError as e:
                 I(" %s: %s" % (self.pn, e.message))
                 error = e
             except Error as e:
                 E(" %s: %s" % (self.pn, e.message))
-                E(" %s: upgrade FAILED! Logs and/or file diffs are available in %s" % (self.pn, self.workdir))
+                E(" %s: Upgrade FAILED! Logs and/or file diffs are available in %s" % (self.pn, self.workdir))
                 error = e
 
             self._commit_changes()
