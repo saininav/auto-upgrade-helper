@@ -495,11 +495,11 @@ class UniverseUpdater(Updater, Email):
         self.git.create_branch("upgrades")
 
     def prepare(self):
-        if "clean_sstate" in settings and settings["clean_sstate"] == "yes" and \
+        if settings.get("clean_sstate", "no") == "yes" and \
                 os.path.exists(os.path.join(get_build_dir(), "sstate-cache")):
             I(" Removing sstate directory ...")
             shutil.rmtree(os.path.join(get_build_dir(), "sstate-cache"))
-        if "clean_tmp" in settings and settings["clean_tmp"] == "yes" and \
+        if settings.get("clean_tmp", "no") == "yes" and \
                 os.path.exists(os.path.join(get_build_dir(), "tmp")):
             I(" Removing tmp directory ...")
             shutil.rmtree(os.path.join(get_build_dir(), "tmp"))
@@ -580,8 +580,7 @@ class UniverseUpdater(Updater, Email):
         # drop last upgrade from git. It's safer this way if the upgrade has
         # problems and other recipes depend on it. Give the other recipes a
         # chance...
-        if ("drop_previous_commits" in settings and
-                settings["drop_previous_commits"] == "yes" and
+        if (settings.get("drop_previous_commits", "no") == "yes" and
                 err is None) or (err is not None and self.patch_file is not None):
             I(" %s: Dropping changes from git ..." % self.pn)
             self.git.reset_hard(1)
