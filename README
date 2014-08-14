@@ -41,6 +41,8 @@ clean_sstate=yes
 clean_tmp=yes
 # keep previous commits or not
 drop_previous_commits=yes
+# machines to test build with
+machines=qemux86 qemux86-64 qemuarm qemumips qemuppc
 --------------- snip ---------------
 
 3. Enable distrodata and supply appropriate additional metadata. For

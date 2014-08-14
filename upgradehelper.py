@@ -130,7 +130,7 @@ class Updater(object):
         self.skip_compilation = skip_compilation
         self.interactive = not auto_mode
 
-        self.machines = ["qemux86", "qemux86-64", "qemuarm", "qemumips", "qemuppc"]
+        self.machines = settings.get('machines', 'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
 
         self.upgrade_steps = [
             (self._create_workdir, None),
