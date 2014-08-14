@@ -165,9 +165,15 @@ class Updater(object):
         self.recipe_dir = os.path.dirname(self.env['FILE'])
 
     def _parse_checkpkg_line(self, line):
-        m = re.match("^([^ \t]*)[ \t]+([^ \t]*)[ \t]+([^ \t]*).*<(.*)@(.*)>[ \t]+.*", line)
-        if m is not None:
-            return (m.group(1), m.group(2), m.group(3), m.group(4) + "@" + m.group(5))
+        m = re.match("^([^ \t]*)[ \t]+([^ \t]*)[ \t]+([^ \t]*)[ \t]+.*", line)
+        if m:
+            res = (m.group(1), m.group(2), m.group(3))
+            m = re.search("<([^ \t]+@[^ \t]+)>", line)
+            if m:
+                maintainer = m.group(1)
+            else:
+                maintainer = None
+            return res + (maintainer,)
 
         return (None, None, None, None)
 
@@ -290,6 +296,8 @@ class Updater(object):
         pkgs_list = []
 
         with open(get_build_dir() + "/tmp/log/checkpkg.csv") as csv:
+            # Skip header line
+            next(csv)
             for line in csv:
                 (pn, cur_ver, next_ver, maintainer) = self._parse_checkpkg_line(line)
 
@@ -443,6 +451,10 @@ class UniverseUpdater(Updater, Email):
     # blacklisted: python, gcc, etc. Also, check the history if the recipe
     # hasn't already been tried
     def pkg_upgradable(self, pn, next_ver, maintainer):
+        if not maintainer:
+            D("Skipping upgrade of %s: no maintainer" % pn)
+            return False
+
         if "blacklist" in settings:
             for p in settings["blacklist"].split():
                 if p == pn:
