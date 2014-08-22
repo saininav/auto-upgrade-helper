@@ -35,6 +35,7 @@ from logging import warning as W
 from logging import error as E
 from logging import critical as C
 import re
+import signal
 import sys
 import ConfigParser as cp
 from datetime import datetime
@@ -659,10 +660,15 @@ class UniverseUpdater(Updater):
         self.prepare()
         super(UniverseUpdater, self).run()
 
+def close_child_processes(signal_id, frame):
+    pid = os.getpgrp()
+    os.killpg(pid, signal.SIGKILL)
 
 if __name__ == "__main__":
     global settings
     global maintainer_override
+
+    signal.signal(signal.SIGINT, close_child_processes)
 
     debug_levels = [log.CRITICAL, log.ERROR, log.WARNING, log.INFO, log.DEBUG]
     args = parse_cmdline()
