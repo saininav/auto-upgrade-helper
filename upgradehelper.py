@@ -173,8 +173,6 @@ class Updater(object):
         self.email_handler = Email(settings)
         self.statistics = Statistics()
 
-
-
     def _get_env(self):
         stdout = self.bb.env(self.pn)
 
@@ -217,6 +215,11 @@ class Updater(object):
         self.recipe = recipe(self.env, self.new_ver, self.interactive, self.workdir,
                              self.recipe_dir, self.bb, self.git)
 
+    def _get_status_msg(self, err):
+        if err:
+            return str(err)
+        else:
+            return "Succeeded"
 
     def _create_workdir(self):
         self.workdir = self.uh_dir + "/" + self.pn
@@ -344,7 +347,6 @@ class Updater(object):
     def pkg_upgrade_handler(self, err):
         if err and self.patch_file:
             answer = "N"
-            status_msg = str(err)
             if self.interactive:
                 I(" %s: Do you want to keep the changes? (y/N)" % self.pn)
                 answer = sys.stdin.readline().strip().upper()
@@ -354,8 +356,6 @@ class Updater(object):
                 self.git.reset_hard(1)
                 self.git.clean_untracked()
                 return
-        elif not err:
-            status_msg = "Succeeded"
 
         status = type(err).__name__
 
@@ -384,7 +384,8 @@ class Updater(object):
             else:
                 subject += " FAILED"
 
-            msg_body = self.mail_header % (self.pn, self.new_ver, status_msg)
+            msg_body = self.mail_header % (self.pn, self.new_ver,
+                    self._get_status_msg(err))
 
             if err is None:
                 msg_body += self.next_steps_info % os.path.basename(self.patch_file)
@@ -653,7 +654,8 @@ class UniverseUpdater(Updater):
     # overriding the base method
     def pkg_upgrade_handler(self, err):
         super(UniverseUpdater, self).pkg_upgrade_handler(self)
-        self.update_history(self.pn, self.new_ver, self.maintainer, status_msg)
+        self.update_history(self.pn, self.new_ver, self.maintainer,
+                self._get_status_msg(err))
 
     def run(self):
         self.update_master()
