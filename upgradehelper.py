@@ -126,9 +126,13 @@ def parse_config_file(config_file):
 class Updater(object):
     def __init__(self, auto_mode=False, send_email=False, skip_compilation=False):
 
-        self.uh_dir = get_build_dir() + "/upgrade-helper"
+        self.uh_dir = os.path.join(get_build_dir(), "upgrade-helper")
         if not os.path.exists(self.uh_dir):
             os.mkdir(self.uh_dir)
+
+        self.uh_work_dir = os.path.join(self.uh_dir, "work")
+        if not os.path.exists(self.uh_work_dir):
+            os.mkdir(self.uh_work_dir)
 
         self.bb = Bitbake(get_build_dir())
         self.buildhistory = BuildHistory(get_build_dir())
@@ -192,7 +196,7 @@ class Updater(object):
             return "Succeeded"
 
     def _create_workdir(self):
-        self.workdir = self.uh_dir + "/" + self.pn
+        self.workdir = os.path.join(self.uh_work_dir, self.pn)
 
         if not os.path.exists(self.workdir):
             os.mkdir(self.workdir)
