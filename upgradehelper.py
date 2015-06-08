@@ -66,10 +66,15 @@ def parse_cmdline():
                                      formatter_class=argparse.RawTextHelpFormatter,
                                      epilog=help_text)
     parser.add_argument("recipe", nargs="+", help="recipe to be upgraded")
+
     parser.add_argument("-t", "--to_version",
                         help="version to upgrade the recipe to")
+    parser.add_argument("-m", "--maintainer",
+                        help="maintainer of the recipe")
+
     parser.add_argument("-a", "--auto-mode", action="store_true", default=False,
                         help="disable interactive mode")
+
     parser.add_argument("-d", "--debug-level", type=int, default=4, choices=range(1, 6),
                         help="set the debug level: CRITICAL=1, ERROR=2, WARNING=3, INFO=4, DEBUG=5")
     parser.add_argument("-e", "--send-emails", action="store_true", default=False,
@@ -686,7 +691,15 @@ if __name__ == "__main__":
         updater.run()
     elif len(args.recipe) >= 1:
         if len(args.recipe) == 1:
-            pkg_list = [(args.recipe[0], args.to_version, None)]
+            if not args.to_version:
+                E(" For upgrade only one recipe you must specify --to_version\n")
+                exit(1)
+
+            if not args.maintainer and args.send_emails:
+                E(" For upgrade only one recipe and send email you must specify --maintainer\n")
+                exit(1)
+
+            pkg_list = [(args.recipe[0], args.to_version, args.maintainer)]
         else:
             pkg_list = []
             for pkg in args.recipe:
