@@ -148,10 +148,8 @@ class Updater(object):
         self.bb = Bitbake(get_build_dir())
         self.buildhistory = BuildHistory(get_build_dir())
         self.git = None
-        if send_email:
-            self.author = "Upgrade Helper <uh@not.set>"
-        else:
-            self.author = None
+        self.author_email = settings.get('from', 'uh@not.set')
+        self.author = "Upgrade Helper <%s>" % self.author_email
         self.skip_compilation = skip_compilation
         self.interactive = not auto_mode
         self.send_email = send_email
