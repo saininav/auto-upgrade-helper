@@ -365,7 +365,7 @@ class Updater(object):
                 "variable in the recipe if is needed.\n\n"
 
             next_steps_info = \
-                "The recipe has been successfully compiled for all major architectures.\n\n" \
+                "The recipe has been successfully compiled for machines %s.\n\n" \
                 "Next steps:\n" \
                 "    - apply the patch: git am %s\n" \
                 "    - check that required patches have not been removed from the recipe\n" \
@@ -401,7 +401,8 @@ class Updater(object):
                 msg_body += license_change_info % license_diff_fn
 
             if err is None:
-                msg_body += next_steps_info % os.path.basename(self.patch_file)
+                msg_body += next_steps_info % (', '.join(self.machines),
+                        os.path.basename(self.patch_file))
 
             msg_body += mail_footer
 
