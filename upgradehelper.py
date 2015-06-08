@@ -124,26 +124,6 @@ def parse_config_file(config_file):
     return (settings, maintainer_override)
 
 class Updater(object):
-    mail_header = \
-        "Hello,\n\nYou are receiving this email because you are the maintainer\n" \
-        "of *%s* recipe and this is to let you know that the automatic attempt\n" \
-        "to upgrade the recipe to *%s* has %s.\n\n"
-
-    next_steps_info = \
-        "The recipe has been successfully compiled for all major architectures.\n\n" \
-        "Next steps:\n" \
-        "    - apply the patch: git am %s\n" \
-        "    - check that required patches have not been removed from the recipe\n" \
-        "    - compile an image that contains the package\n" \
-        "    - perform some basic sanity tests\n" \
-        "    - amend the patch and sign it off: git commit -s --reset-author --amend\n" \
-        "    - send it to the list\n\n" \
-
-    mail_footer = \
-        "Attached are the patch and the logs (+ license file diff) in case of failure.\n\n" \
-        "Regards,\nThe Upgrade Helper"
-
-
     def __init__(self, auto_mode=False, send_email=False, skip_compilation=False):
 
         self.uh_dir = get_build_dir() + "/upgrade-helper"
@@ -375,6 +355,29 @@ class Updater(object):
             self.git.clean_untracked()
 
         if self.send_email:
+            mail_header = \
+                "Hello,\n\nYou are receiving this email because you are the maintainer\n" \
+                "of *%s* recipe and this is to let you know that the automatic attempt\n" \
+                "to upgrade the recipe to *%s* has %s.\n\n"
+
+            license_change_info = \
+                "*LICENSE CHANGED* please review the %s file and update the LICENSE\n" \
+                "variable in the recipe if is needed.\n\n"
+
+            next_steps_info = \
+                "The recipe has been successfully compiled for all major architectures.\n\n" \
+                "Next steps:\n" \
+                "    - apply the patch: git am %s\n" \
+                "    - check that required patches have not been removed from the recipe\n" \
+                "    - compile an image that contains the package\n" \
+                "    - perform some basic sanity tests\n" \
+                "    - amend the patch and sign it off: git commit -s --reset-author --amend\n" \
+                "    - send it to the list\n\n" \
+
+            mail_footer = \
+                "Attached are the patch, license diff (if change) and bitbake log.\n\n" \
+                "Regards,\nThe Upgrade Helper"
+
             # don't bother maintainer with mail if the recipe is already up to date
             if status == "UpgradeNotNeededError":
                 return
@@ -390,13 +393,17 @@ class Updater(object):
             else:
                 subject += " FAILED"
 
-            msg_body = self.mail_header % (self.pn, self.new_ver,
+            msg_body = mail_header % (self.pn, self.new_ver,
                     self._get_status_msg(err))
 
-            if err is None:
-                msg_body += self.next_steps_info % os.path.basename(self.patch_file)
+            license_diff_fn = self.recipe.get_license_diff_file_name()
+            if license_diff_fn:
+                msg_body += license_change_info % license_diff_fn
 
-            msg_body += self.mail_footer
+            if err is None:
+                msg_body += next_steps_info % os.path.basename(self.patch_file)
+
+            msg_body += mail_footer
 
             # Add possible attachments to email
             attachments = []

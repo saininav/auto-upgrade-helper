@@ -394,6 +394,13 @@ class Recipe(object):
 
         return False
 
+    def get_license_diff_file_name(self):
+        file_name = None
+        if not self.license_diff_file is None:
+            file_name = os.path.basename(self.license_diff_file)
+
+        return file_name
+
     def _get_failed_recipes(self, output):
         failed_tasks = dict()
         machine = None
