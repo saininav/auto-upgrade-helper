@@ -376,11 +376,11 @@ class Recipe(object):
                   "been updated! View diff? (Y/n)" % (self.env['PN'], license_file))
                 answer = sys.stdin.readline().strip().upper()
                 if answer == '' or answer == 'Y':
-                    print(" ################ Licence file diff #################")
+                    I(" ################ Licence file diff #################")
                     with open(self.license_diff_file) as diff:
-                        print("%s" % diff.read())
-                    print(" ####################################################")
-                print("Retry compilation? (Y/n)")
+                        I("%s" % diff.read())
+                    I(" ####################################################")
+                I(" Retry compilation? (Y/n)")
                 answer = sys.stdin.readline().strip().upper()
                 if answer == '' or answer == 'Y':
                     return True
@@ -647,7 +647,6 @@ class Recipe(object):
 
                     if not self._license_issue_handled(log_file):
                         raise LicenseError()
-
                     #retry
                     self.compile(machine)
                 elif failed_task == "do_fetch":

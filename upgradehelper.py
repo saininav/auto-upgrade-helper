@@ -511,7 +511,7 @@ class Updater(object):
                     exit(0)
 
         if (attempted_pkgs > 1):
-            print("%s" % self.statistics.pkg_stats())
+            I("%s" % self.statistics.pkg_stats())
             if self.send_email:
                 self.send_status_mail()
 
@@ -644,10 +644,10 @@ class UniverseUpdater(Updater):
             last_check.write(current_date + "," + cur_master_commit + "," +
                              last_checkpkg_file)
 
-        print("########### The list of recipes to be upgraded ############")
+        I(" ########### The list of recipes to be upgraded ############")
         for p, v, m in pkgs_list:
-            print("%s,%s,%s" % (p, v, m))
-        print("############################################################")
+            I(" %s, %s, %s" % (p, v, m))
+        I(" ############################################################")
 
         return pkgs_list
 
