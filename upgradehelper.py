@@ -335,11 +335,10 @@ class Updater(object):
 
     # this function will be called at the end of each recipe upgrade
     def pkg_upgrade_handler(self, err):
-        if err and self.patch_file:
+        if err and self.patch_file and self.interactive:
             answer = "N"
-            if self.interactive:
-                I(" %s: Do you want to keep the changes? (y/N)" % self.pn)
-                answer = sys.stdin.readline().strip().upper()
+            I(" %s: Do you want to keep the changes? (y/N)" % self.pn)
+            answer = sys.stdin.readline().strip().upper()
 
             if answer == '' or answer == 'N':
                 I(" %s: Dropping changes from git ..." % self.pn)
