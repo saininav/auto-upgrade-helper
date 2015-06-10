@@ -112,7 +112,8 @@ The latest version of the code can always be found here:
   http://git.yoctoproject.org/cgit/cgit.cgi/auto-upgrade-helper/
 
 Contributions are welcome. Please send patches / pull requests to
-yocto@yoctoproject.org with '[auh]' in the subject.
+yocto@yoctoproject.org with '[auh]' in the subject also CC the
+current maintainer: Aníbal Limón <anibal.limon@linux.intel.com>.
 
 
 License
