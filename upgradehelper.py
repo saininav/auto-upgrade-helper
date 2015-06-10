@@ -346,8 +346,6 @@ class Updater(object):
                 self.git.clean_untracked()
                 return
 
-        status = type(err).__name__
-
         # drop last upgrade from git. It's safer this way if the upgrade has
         # problems and other recipes depend on it. Give the other recipes a
         # chance...
@@ -381,8 +379,11 @@ class Updater(object):
                 "Attached are the patch, license diff (if change) and bitbake log.\n\n" \
                 "Regards,\nThe Upgrade Helper"
 
-            # don't bother maintainer with mail if the recipe is already up to date
-            if status == "UpgradeNotNeededError":
+            # only send email to Maintainer when is an error that can handle
+            if err and not isinstance(err, MaintainerError):
+                D( "%s: Don't send email to maintainer because the error was " \
+                   "%s and the information isn't useful, please review it." \
+                    % (self.pn, type(err).__name__))
                 return
 
             if self.maintainer in maintainer_override:
@@ -478,6 +479,7 @@ class Updater(object):
 
         attempted_pkgs = 0
         for self.pn, self.new_ver, self.maintainer in pkgs_to_upgrade:
+            error = None
             self.recipe = None
             attempted_pkgs += 1
             I(" ATTEMPT PACKAGE %d/%d" % (attempted_pkgs, total_pkgs))
@@ -489,10 +491,6 @@ class Updater(object):
                     step()
 
                 I(" %s: Upgrade SUCCESSFUL! Please test!" % self.pn)
-                error = None
-            except UpgradeNotNeededError as e:
-                I(" %s: %s" % (self.pn, e.message))
-                error = e
             except Error as e:
                 E(" %s: %s" % (self.pn, e.message))
                 E(" %s: Upgrade FAILED! Logs and/or file diffs are available in %s" % (self.pn, self.workdir))
@@ -667,7 +665,7 @@ class UniverseUpdater(Updater):
 
     # overriding the base method
     def pkg_upgrade_handler(self, err):
-        super(UniverseUpdater, self).pkg_upgrade_handler(self)
+        super(UniverseUpdater, self).pkg_upgrade_handler(err)
         self.update_history(self.pn, self.new_ver, self.maintainer,
                 self._get_status_msg(err))
 

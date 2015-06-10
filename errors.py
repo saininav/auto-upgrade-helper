@@ -31,6 +31,11 @@ class Error(Exception):
     def __str__(self):
         return "Failed(other errors)"
 
+class MaintainerError(Error):
+    """ Class for group error that can be sent to Maintainer's """
+    def __init__(self, message=None, stdout=None, stderr=None):
+        super(MaintainerError, self).__init__(message, stdout, stderr)
+
 class FetchError(Error):
     def __init__(self):
         super(FetchError, self).__init__("do_fetch failed")
@@ -38,25 +43,28 @@ class FetchError(Error):
     def __str__(self):
         return "Failed(do_fetch)"
 
-class PatchError(Error):
+class PatchError(MaintainerError):
     def __init__(self):
         super(PatchError, self).__init__("do_patch failed")
 
     def __str__(self):
         return "Failed(do_patch)"
 
-class ConfigureError(Error):
+class ConfigureError(MaintainerError):
     def __init__(self):
         super(ConfigureError, self).__init__("do_configure failed")
 
-class CompilationError(Error):
+    def __str__(self):
+        return "Failed(do_configure)"
+
+class CompilationError(MaintainerError):
     def __init__(self):
         super(CompilationError, self).__init__("do_compile failed")
 
     def __str__(self):
         return "Failed(do_compile)"
 
-class LicenseError(Error):
+class LicenseError(MaintainerError):
     def __init__(self):
         super(LicenseError, self).__init__("license checksum does not match")
 
