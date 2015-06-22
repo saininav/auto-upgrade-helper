@@ -58,7 +58,7 @@ class Email(object):
 
         super(Email, self).__init__()
 
-    def send_email(self, to_addr, subject, text, files=[]):
+    def send_email(self, to_addr, subject, text, files=[], cc_addr=None):
         if self.smtp_host is None or self.from_addr is None:
             return 0
 
@@ -70,6 +70,11 @@ class Email(object):
             msg['To'] = ', '.join(to_addr)
         else:
             msg['To'] = to_addr
+        if cc_addr is not None:
+            if type(cc_addr) is list:
+                msg['Cc'] = ', '.join(cc_addr)
+            else:
+                msg['Cc'] = cc_addr
         msg['Subject'] = subject
 
         msg.attach(MIMEText(text))

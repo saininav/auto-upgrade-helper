@@ -392,6 +392,10 @@ class Updater(object):
             else:
                 to_addr = self.maintainer
 
+            cc_addr = None
+            if "status_recipients" in settings:
+                cc_addr = settings["status_recipients"].split()
+
             subject = "[AUH] " + self.pn + ": upgrading to " + self.new_ver
             if err is None:
                 subject += " SUCCEEDED"
@@ -418,7 +422,7 @@ class Updater(object):
                 if os.path.isfile(attachment_fullpath):
                     attachments.append(attachment_fullpath)
 
-            self.email_handler.send_email(to_addr, subject, msg_body, attachments)
+            self.email_handler.send_email(to_addr, subject, msg_body, attachments, cc_addr=cc_addr)
 
     def _commit_changes(self):
         try:
