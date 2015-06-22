@@ -376,7 +376,8 @@ class Updater(object):
                 "    - send it to the list\n\n" \
 
             mail_footer = \
-                "Attached are the patch, license diff (if change) and bitbake log.\n\n" \
+                "Attached are the patch, license diff (if change) and bitbake log.\n" \
+                "Any problem please contact Anibal Limon <anibal.limon@intel.com>.\n\n" \
                 "Regards,\nThe Upgrade Helper"
 
             # only send email to Maintainer when is an error that can handle
