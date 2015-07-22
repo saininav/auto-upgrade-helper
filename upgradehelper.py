@@ -65,7 +65,7 @@ def parse_cmdline():
     parser = argparse.ArgumentParser(description='Package Upgrade Helper',
                                      formatter_class=argparse.RawTextHelpFormatter,
                                      epilog=help_text)
-    parser.add_argument("recipe", nargs="+", help="recipe to be upgraded")
+    parser.add_argument("recipe", help="recipe to be upgraded")
 
     parser.add_argument("-t", "--to_version",
                         help="version to upgrade the recipe to")
@@ -507,14 +507,6 @@ class Updater(object):
 
             self.statistics.update(self.pn, self.new_ver, self.maintainer, error)
 
-            if self.interactive and attempted_pkgs < total_pkgs:
-                I(" %s: Proceed to next recipe? (Y/n)" % self.pn)
-                answer = sys.stdin.readline().strip().upper()
-
-                if answer != 'Y' and answer != '':
-                    I("Aborted by user!")
-                    exit(0)
-
         if (attempted_pkgs > 1):
             I("%s" % self.statistics.pkg_stats())
             if self.send_email:
@@ -700,24 +692,18 @@ if __name__ == "__main__":
 
     settings, maintainer_override = parse_config_file(args.config_file)
 
-    if len(args.recipe) == 1 and args.recipe[0] == "all":
+    if args.recipe == "all":
         updater = UniverseUpdater()
         updater.run()
-    elif len(args.recipe) >= 1:
-        if len(args.recipe) == 1:
-            if not args.to_version:
-                E(" For upgrade only one recipe you must specify --to_version\n")
-                exit(1)
+    else:
+        if not args.to_version:
+            E(" For upgrade only one recipe you must specify --to_version\n")
+            exit(1)
 
-            if not args.maintainer and args.send_emails:
-                E(" For upgrade only one recipe and send email you must specify --maintainer\n")
-                exit(1)
+        if not args.maintainer and args.send_emails:
+            E(" For upgrade only one recipe and send email you must specify --maintainer\n")
+            exit(1)
 
-            pkg_list = [(args.recipe[0], args.to_version, args.maintainer)]
-        else:
-            pkg_list = []
-            for pkg in args.recipe:
-                pkg_list.append((pkg, None, None))
-
+        pkg_list = [(args.recipe, args.to_version, args.maintainer)]
         updater = Updater(args.auto_mode, args.send_emails, args.skip_compilation)
         updater.run(pkg_list)
