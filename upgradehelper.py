@@ -207,6 +207,9 @@ class Updater(object):
     def _detect_repo(self):
         self._get_env()
 
+        if self.env['PV'] == self.new_ver:
+            raise UpgradeNotNeededError
+
         if self.git is not None:
             return
 
@@ -496,9 +499,24 @@ class Updater(object):
                     step()
 
                 I(" %s: Upgrade SUCCESSFUL! Please test!" % self.pn)
-            except Error as e:
-                E(" %s: %s" % (self.pn, e.message))
-                E(" %s: Upgrade FAILED! Logs and/or file diffs are available in %s" % (self.pn, self.workdir))
+            except Exception as e:
+                if isinstance(e, UpgradeNotNeededError):
+                    I(" %s: %s" % (self.pn, e.message))
+                elif isinstance(e, UnsupportedProtocolError):
+                    I(" %s: %s" % (self.pn, e.message))
+                else:
+                    if not isinstance(e, Error):
+                        import traceback
+                        msg = "Failed(unknown error)\n" + traceback.format_exc()
+                        e = Error(message=msg)
+                        error = e
+
+                    E(" %s: %s" % (self.pn, e.message))
+
+                    if os.listdir(self.workdir):
+                        E(" %s: Upgrade FAILED! Logs and/or file diffs are available in %s"
+                            % (self.pn, self.workdir))
+
                 error = e
 
             self._commit_changes()
