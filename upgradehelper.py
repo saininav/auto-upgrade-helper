@@ -358,7 +358,8 @@ class Updater(object):
             self.git.reset_hard(1)
             self.git.clean_untracked()
 
-        if self.send_email:
+        # only send email to Maintainer when patch file exist
+        if self.send_email and self.patch_file:
             mail_header = \
                 "Hello,\n\nYou are receiving this email because you are the maintainer\n" \
                 "of *%s* recipe and this is to let you know that the automatic attempt\n" \
@@ -382,13 +383,6 @@ class Updater(object):
                 "Attached are the patch, license diff (if change) and bitbake log.\n" \
                 "Any problem please contact Anibal Limon <anibal.limon@intel.com>.\n\n" \
                 "Regards,\nThe Upgrade Helper"
-
-            # only send email to Maintainer when is an error that can handle
-            if err and not isinstance(err, MaintainerError):
-                D( "%s: Don't send email to maintainer because the error was " \
-                   "%s and the information isn't useful, please review it." \
-                    % (self.pn, type(err).__name__))
-                return
 
             if self.maintainer in maintainer_override:
                 to_addr = maintainer_override[self.maintainer]
