@@ -285,10 +285,7 @@ class Updater(object):
                     C(" \"distrodata.bbclass\" not inherited. Consider adding "
                       "the following to your local.conf:\n\n"
                       "INHERIT =+ \"distrodata\"\n")
-                else:
-                    C(line)
-
-            exit(1)
+                    exit(1)
 
     def _parse_checkpkg_file(self, file_path):
         import csv
