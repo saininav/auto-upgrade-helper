@@ -42,7 +42,7 @@ class Bitbake(object):
         self.log_dir = None
         super(Bitbake, self).__init__()
 
-    def _cmd(self, recipe, options=None, env_var=None):
+    def _cmd(self, recipe, options=None, env_var=None, output_filter=None):
         cmd = ""
         if env_var is not None:
             cmd += env_var + " "
@@ -51,6 +51,9 @@ class Bitbake(object):
             cmd += options + " "
 
         cmd += recipe
+
+        if output_filter is not None:
+            cmd += ' |  grep ' + output_filter
 
         os.chdir(self.build_dir)
 
@@ -74,7 +77,7 @@ class Bitbake(object):
         return os.path.join(self.log_dir, "bitbake_log.txt")
 
     def env(self, recipe):
-        return self._cmd(recipe, "-e")
+        return self._cmd(recipe, "-e", output_filter="-v \"^#\"")
 
     def fetch(self, recipe):
         return self._cmd(recipe, "-c fetch")
