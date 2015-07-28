@@ -43,7 +43,7 @@ from datetime import date
 import shutil
 from errors import *
 from git import Git
-from bitbake import Bitbake, BuildHistory
+from bitbake import Bitbake
 from emailhandler import Email
 from statistics import Statistics
 from recipe import Recipe
@@ -135,7 +135,6 @@ class Updater(object):
             os.mkdir(self.uh_work_dir)
 
         self.bb = Bitbake(get_build_dir())
-        self.buildhistory = BuildHistory(get_build_dir())
         self.git = None
         self.author_email = settings.get('from', 'uh@not.set')
         self.author = "Upgrade Helper <%s>" % self.author_email
@@ -265,14 +264,6 @@ class Updater(object):
         for machine in self.machines:
             I(" %s: compiling for %s ..." % (self.pn, machine))
             self.recipe.compile(machine)
-
-    def _review(self):
-        # Check build_history
-        if not self.skip_compilation:
-            I(" %s: Checking buildhistory ..." % self.pn)
-            self.buildhistory.set_work_dir(self.workdir)
-            if self.buildhistory.diff(len(self.machines)):
-               I(" %s: Wrote buildhistory-diff output ..." % self.pn)
 
     def _check_upstream_versions(self, packages=[("universe", None, None)]):
         I(" Fetching upstream version(s) ...")
