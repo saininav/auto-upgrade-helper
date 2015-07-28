@@ -36,6 +36,8 @@ for path in os.environ["PATH"].split(':'):
         sys.path.insert(0, os.path.join(path, "../lib"))
         import bb
 
+BITBAKE_ERROR_LOG = 'bitbake_error_log.txt'
+
 class Bitbake(object):
     def __init__(self, build_dir):
         self.build_dir = build_dir
@@ -63,7 +65,7 @@ class Bitbake(object):
             D("%s returned:\n%s" % (cmd, e.__str__()))
 
             if self.log_dir is not None and os.path.exists(self.log_dir):
-                with open(os.path.join(self.log_dir, "bitbake_log.txt"), "w+") as log:
+                with open(os.path.join(self.log_dir, BITBAKE_ERROR_LOG), "w+") as log:
                     log.write(e.stdout)
 
             raise Error("\'" + cmd + "\' failed", e.stdout, e.stderr)
@@ -74,7 +76,7 @@ class Bitbake(object):
         self.log_dir = dir
 
     def get_stdout_log(self):
-        return os.path.join(self.log_dir, "bitbake_log.txt")
+        return os.path.join(self.log_dir, BITBAKE_ERROR_LOG)
 
     def env(self, recipe):
         return self._cmd(recipe, "-e", output_filter="-v \"^#\"")
