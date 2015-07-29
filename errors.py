@@ -85,3 +85,9 @@ class UpgradeNotNeededError(Error):
     def __str__(self):
         return "Failed(up to date)"
 
+class EmptyEnvError(Error):
+    def __init__(self, stdout):
+        super(EmptyEnvError, self).__init__("Empty environment returned", stdout)
+
+    def __str__(self):
+        return "Failed(get_env)"

@@ -44,7 +44,7 @@ class Bitbake(object):
         self.log_dir = None
         super(Bitbake, self).__init__()
 
-    def _cmd(self, recipe, options=None, env_var=None, output_filter=None):
+    def _cmd(self, recipe=None, options=None, env_var=None, output_filter=None):
         cmd = ""
         if env_var is not None:
             cmd += env_var + " "
@@ -52,7 +52,8 @@ class Bitbake(object):
         if options is not None:
             cmd += options + " "
 
-        cmd += recipe
+        if recipe is not None:
+            cmd += recipe
 
         if output_filter is not None:
             cmd += ' |  grep ' + output_filter
@@ -78,7 +79,7 @@ class Bitbake(object):
     def get_stdout_log(self):
         return os.path.join(self.log_dir, BITBAKE_ERROR_LOG)
 
-    def env(self, recipe):
+    def env(self, recipe=None):
         return self._cmd(recipe, "-e", output_filter="-v \"^#\"")
 
     def fetch(self, recipe):
@@ -104,37 +105,3 @@ class Bitbake(object):
 
     def dependency_graph(self, package_list):
         return self._cmd(package_list, "-g")
-
-class BuildHistory(object):
-    def __init__(self, build_dir):
-        self.build_dir = build_dir
-        self.work_dir = None
-
-    def set_work_dir(self, work_dir):
-        self.work_dir = work_dir
-
-    # Return True if buildhistory-diff gives output
-    def diff(self, revision_steps):
-        os.chdir(self.build_dir)
-        cmd = "buildhistory-diff HEAD~" + str(revision_steps)
-
-        try:
-            stdout, stderr = bb.process.run(cmd)
-            # Write diff output to log file if there is any
-
-            if stdout and os.path.exists(self.work_dir):
-                with open(os.path.join(self.work_dir, "buildhistory.txt"), "w+") as log:
-                    log.write(stdout)
-                return True
-        except bb.process.ExecutionError as e:
-            for line in e.stdout.split('\n'):
-                if line.find("Buildhistory directory \"buildhistory/\" does not exist") == 0:
-                    C(" \"buildhistory.bbclass\" not inherited. Consider adding "
-                      "the following to your local.conf:\n\n"
-                      "INHERIT =+ \"buildhistory\"\n"
-                      "BUILDHISTORY_COMMIT = \"1\"\n\n"
-                      "Do not remove any other inherited class in the process (e.g. distrodata)\n")
-                    exit(1)
-
-        return False
-

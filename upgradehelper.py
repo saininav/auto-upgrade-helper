@@ -44,6 +44,7 @@ import shutil
 from errors import *
 from git import Git
 from bitbake import Bitbake
+from buildhistory import BuildHistory
 from emailhandler import Email
 from statistics import Statistics
 from recipe import Recipe
@@ -145,23 +146,40 @@ class Updater(object):
         self.machines = settings.get('machines', 'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
 
         self.upgrade_steps = [
+            (self._load_env, "Loading environment ..."),
             (self._create_workdir, None),
-            (self._get_env, "Loading environment ..."),
             (self._detect_repo, "Detecting git repository location ..."),
             (self._clean_repo, "Cleaning git repository of temporary branch ..."),
             (self._detect_recipe_type, None),
+            (self._buildhistory_init, None),
             (self._unpack_original, "Fetch & unpack original version ..."),
             (self._rename, "Renaming recipes, reset PR (if exists) ..."),
             (self._cleanall, "Clean all ..."),
             (self._fetch, "Fetch new version (old checksums) ..."),
-            (self._compile, None)
+            (self._compile, None),
+            (self._buildhistory_diff, None)
         ]
+
+        try:
+            self.base_env = self._get_env()
+        except EmptyEnvError as e:
+            import traceback
+            E( " %s\n%s" % (e.message, traceback.format_exc()))
+            E( " Bitbake output:\n%s" % (e.stdout))
+            exit(1)
+        self.buildhistory_enabled = self._buildhistory_is_enabled()
 
         self.email_handler = Email(settings)
         self.statistics = Statistics()
 
-    def _get_env(self):
-        stdout = self.bb.env(self.pn)
+    def _get_status_msg(self, err):
+        if err:
+            return str(err)
+        else:
+            return "Succeeded"
+
+    def _get_env(self, pn=None):
+        stdout = self.bb.env(pn)
 
         assignment = re.compile("^([^ \t=]*)=(.*)")
         bb_env = dict()
@@ -173,38 +191,46 @@ class Updater(object):
 
                 bb_env[m.group(1)] = m.group(2).strip("\"")
 
-        self.env = bb_env
-        self.recipe_dir = os.path.dirname(self.env['FILE'])
+        if not bb_env:
+            raise EmptyEnvError(stdout)
 
-    def _detect_recipe_type(self):
-        if self.env['SRC_URI'].find("ftp://") != -1 or  \
-                self.env['SRC_URI'].find("http://") != -1 or \
-                self.env['SRC_URI'].find("https://") != -1:
-            recipe = Recipe
-        elif self.env['SRC_URI'].find("git://") != -1:
-            recipe = GitRecipe
-        else:
-            raise UnsupportedProtocolError
+        return bb_env
 
-        self.recipe = recipe(self.env, self.new_ver, self.interactive, self.workdir,
-                             self.recipe_dir, self.bb, self.git)
+    def _buildhistory_is_enabled(self):
+        enabled = False
 
-    def _get_status_msg(self, err):
-        if err:
-            return str(err)
-        else:
-            return "Succeeded"
+        if 'buildhistory' in self.base_env['INHERIT']:
+            if not 'BUILDHISTORY_COMMIT' in self.base_env:
+                E(" Buildhistory was enabled but need"\
+                        " BUILDHISTORY_COMMIT=1 please set.")
+                exit(1)
+
+            if not self.base_env['BUILDHISTORY_COMMIT'] == '1':
+                E(" Buildhistory was enabled but need"\
+                        " BUILDHISTORY_COMMIT=1 please set.")
+                exit(1)
+
+            if self.skip_compilation:
+                W(" Buildhistory disabled because user" \
+                        " skip compilation!")
+            else:
+                enabled = True
+
+        return enabled
+
+    def _load_env(self):
+        self.env = self._get_env(self.pn)
 
     def _create_workdir(self):
         self.workdir = os.path.join(self.uh_work_dir, self.pn)
 
-        if not os.path.exists(self.workdir):
-            os.mkdir(self.workdir)
-        else:
-            for f in os.listdir(self.workdir):
-                os.remove(os.path.join(self.workdir, f))
+        if os.path.exists(self.workdir):
+            shutil.rmtree(self.workdir)
+        os.mkdir(self.workdir)
 
     def _detect_repo(self):
+        self.recipe_dir = os.path.dirname(self.env['FILE'])
+
         if self.env['PV'] == self.new_ver:
             raise UpgradeNotNeededError
 
@@ -227,7 +253,7 @@ class Updater(object):
             self.git.reset_hard()
             self.git.clean_untracked()
 
-            self._get_env()
+            self.env = self._get_env(self.pn)
 
     def _clean_repo(self):
         try:
@@ -239,14 +265,34 @@ class Updater(object):
         except:
             pass
 
+    def _detect_recipe_type(self):
+        if self.env['SRC_URI'].find("ftp://") != -1 or  \
+                self.env['SRC_URI'].find("http://") != -1 or \
+                self.env['SRC_URI'].find("https://") != -1:
+            recipe = Recipe
+        elif self.env['SRC_URI'].find("git://") != -1:
+            recipe = GitRecipe
+        else:
+            raise UnsupportedProtocolError
+
+        self.recipe = recipe(self.env, self.new_ver, self.interactive, self.workdir,
+                             self.recipe_dir, self.bb, self.git)
+
+    def _buildhistory_init(self):
+        if self.buildhistory_enabled == False:
+            return
+
+        self.buildhistory = BuildHistory(self.bb, self.pn, self.workdir)
+        I(" %s: Initial buildhistory for %s ..." % (self.pn, self.machines))
+        self.buildhistory.init(self.machines)
+
     def _unpack_original(self):
         self.recipe.unpack()
 
     def _rename(self):
         self.recipe.rename()
 
-        # fetch new environment
-        self._get_env()
+        self.env = self._get_env(self.pn)
 
         self.recipe.update_env(self.env)
 
@@ -264,6 +310,15 @@ class Updater(object):
         for machine in self.machines:
             I(" %s: compiling for %s ..." % (self.pn, machine))
             self.recipe.compile(machine)
+            if self.buildhistory is not None:
+                self.buildhistory.add()
+
+    def _buildhistory_diff(self):
+        if self.buildhistory_enabled == False:
+            return
+
+        I(" %s: Checking buildhistory ..." % self.pn)
+        self.buildhistory.diff()
 
     def _get_packages_to_upgrade(self, packages=None):
         if packages is None:
