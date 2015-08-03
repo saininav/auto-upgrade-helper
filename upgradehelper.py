@@ -147,6 +147,7 @@ class Updater(object):
 
         self.upgrade_steps = [
             (self._create_workdir, None),
+            (self._get_env, "Loading environment ..."),
             (self._detect_repo, "Detecting git repository location ..."),
             (self._clean_repo, "Cleaning git repository of temporary branch ..."),
             (self._detect_recipe_type, None),
@@ -205,8 +206,6 @@ class Updater(object):
                 os.remove(os.path.join(self.workdir, f))
 
     def _detect_repo(self):
-        self._get_env()
-
         if self.env['PV'] == self.new_ver:
             raise UpgradeNotNeededError
 
@@ -216,7 +215,6 @@ class Updater(object):
         self.git = Git(self.recipe_dir)
 
         stdout = self.git.status()
-
         if stdout != "":
             if self.interactive:
                 W(" %s: git repository has uncommited work which will be dropped! Proceed? (y/N)" % self.pn)
