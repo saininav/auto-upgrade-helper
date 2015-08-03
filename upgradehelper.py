@@ -209,7 +209,8 @@ class Updater(object):
         if self.env['PV'] == self.new_ver:
             raise UpgradeNotNeededError
 
-        if self.git is not None:
+        # UniverseUpdater use git poky respository 
+        if isinstance(self.git, UniverseUpdater):
             return
 
         self.git = Git(self.recipe_dir)
@@ -525,6 +526,8 @@ class Updater(object):
 class UniverseUpdater(Updater):
     def __init__(self):
         Updater.__init__(self, True, True)
+
+        # XXX: assume that the poky directory is the first entry in the PATH
         self.git = Git(os.path.dirname(os.getenv('PATH', False).split(':')[0]))
 
         # read history file
