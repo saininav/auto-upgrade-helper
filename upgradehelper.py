@@ -427,6 +427,7 @@ class Updater(object):
                     I(" %s: Nothing to commit!" % self.pn)
                     return
 
+            I(" %s: %s" % (self.pn, e.stdout))
             raise e
 
     def _order_list(self, package_list):
