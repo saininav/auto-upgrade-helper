@@ -10,13 +10,20 @@ published upstream.
 Setup
 -----
 
+0. AUH needs all the dependencies listed for Yocto also requires git 
+   configured because uses it to save upgrades, you need to have git
+   user and email configured, example:
+
+   $ git config --global user.name "Some Name"
+   $ git config --global user.email "somename@somedomain.com"
+
 1. Ensure you have a working copy of the build system that is configured
    and ready to run, i.e. you've run the oe-init-build-env script to
    create a build directory and edited local.conf / bblayers.conf as
    desired.
 
-2. Prepare a configuration file, by default in $BUILDDIR/upgrade-helper,
-   as below:
+2. Prepare a configuration file, by default in $BUILDDIR/upgrade-helper/
+   upgrade-helper.conf, as below:
 
 --------------- snip ---------------
 [maintainer_override]
@@ -27,20 +34,28 @@ johhny.bravo@bravo.com=john.doe@doe.com
 [settings]
 # recipes in blacklist will be skipped
 blacklist=python glibc gcc
+
 # only recipes belonging to maintainers in whitelist will be attempted
 maintainers_whitelist=jane.doe@doe.com john.doe@doe.com johhny.bravo@bravo.com
+
 # SMTP server
 smtp=smtp.my-server.com:25
+
 # from whom should the mails arrive
 from=upgrade.helper@my-server.com
+
 # who should get the status mail with statistics, at the end
 status_recipients=john.doe@doe.com
+
 # clean sstate directory before upgrading
 clean_sstate=yes
+
 # clean tmp directory before upgrading
 clean_tmp=yes
+
 # keep previous commits or not
 drop_previous_commits=yes
+
 # machines to test build with
 machines=qemux86 qemux86-64 qemuarm qemumips qemuppc
 --------------- snip ---------------
@@ -50,10 +65,6 @@ machines=qemux86 qemux86-64 qemuarm qemumips qemuppc
 
 --------------- snip ---------------
 INHERIT =+ "distrodata"
-require conf/distro/include/recipe_color.inc
-require conf/distro/include/distro_alias.inc
-require conf/distro/include/maintainers.inc
-require conf/distro/include/upstream_tracking.inc
 --------------- snip ---------------
 
 WARNING: if you are using the default maintainers.inc file supplied
@@ -72,8 +83,10 @@ INHERIT =+ "buildhistory"
 BUILDHISTORY_COMMIT" = "1"
 --------------- snip ---------------
 
-(Do not remove any other inherited class in the process, e.g. distrodata).
+If upgrade is succesful buildhistory diff's are generated into
+$BUILDDIR/upgrade-helper/work/recipe/buildhistory-diff.txt.
 
+(Do not remove any other inherited class in the process, e.g. distrodata).
 
 Usage
 -----
@@ -88,9 +101,6 @@ Some manual usage examples:
   interactively:
     $ upgrade-helper.py xmodmap -t 1.2.3
 
-* To upgrade a list of recipes in automatic mode:
-    $ upgrade-helper.py -a xmodmap xf86-video-intel
-
 * To attempt to upgrade all recipes and automatically send email
   messages to maintainers for each attempted recipe as well as a
   status mail at the end, use:
@@ -100,7 +110,6 @@ If you wish to run the script on a regular basis, you can set up a cron
 job; the "weeklyjob.sh" file distributed with this project is the basis
 of a script you can call from a cron job and also provides an example
 crontab line.
-
 
 Maintenance
 -----------
@@ -115,11 +124,9 @@ Contributions are welcome. Please send patches / pull requests to
 yocto@yoctoproject.org with '[auh]' in the subject also CC the
 current maintainer: Aníbal Limón <anibal.limon@linux.intel.com>.
 
-
 License
 -------
 
 This application is licensed under the GNU General Public License
 version 2.0 or (at your option) any later version. Please see the
 LICENSE file for further details.
-
