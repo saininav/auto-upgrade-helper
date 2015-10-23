@@ -467,6 +467,11 @@ class Updater(object):
             W("No recipes attempted, not sending status mail!")
 
     def run(self, package_list=None):
+        I(" Building gcc runtimes ...")
+        for machine in self.machines:
+            I("  building gcc runtime for %s" % machine)
+            self.bb.complete("gcc-runtime", machine)
+
         pkgs_to_upgrade = self._get_packages_to_upgrade(package_list)
 
         total_pkgs = len(pkgs_to_upgrade)
