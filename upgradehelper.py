@@ -310,7 +310,7 @@ class Updater(object):
         for machine in self.machines:
             I(" %s: compiling for %s ..." % (self.pn, machine))
             self.recipe.compile(machine)
-            if self.buildhistory is not None:
+            if self.buildhistory_enabled == True:
                 self.buildhistory.add()
 
     def _buildhistory_diff(self):
