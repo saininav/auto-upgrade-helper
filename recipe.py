@@ -55,7 +55,6 @@ class Recipe(object):
             "tar.gz", "tgz", "zip", "tar.bz2", "tar.xz", "tar.lz4", "bz2",
             "lz4", "orig.tar.gz", "src.tar.gz", "src.rpm", "src.tgz",
             "svnr\d+.tar.bz2", "stable.tar.gz", "src.rpm"]
-        self.suffix_index = 0
         self.old_env = None
 
         self.commit_msg = self.env['PN'] + ": upgrade to " + self.new_ver + "\n\n"
@@ -540,33 +539,42 @@ class Recipe(object):
         self.bb.unpack(self.env['PN'])
 
     def fetch(self):
-        try:
-            self.bb.fetch(self.env['PN'])
-        except Error as e:
-            machine, failed_recipes = self._get_failed_recipes(e.stdout)
-            if not self.env['PN'] in failed_recipes:
-                raise Error("unknown error occured during fetch")
+        from gitrecipe import GitRecipe
 
-            fetch_log = failed_recipes[self.env['PN']][1]
-            if self.suffix_index < len(self.suffixes) and self._is_uri_failure(fetch_log):
-                I(" Trying new SRC_URI suffix: %s ..." % self.suffixes[self.suffix_index])
-                self._change_source_suffix(self.suffixes[self.suffix_index])
-                self.suffix_index += 1
-                self.fetch()
-            
-            if not self._is_uri_failure(fetch_log):
-                if not self.checksums_changed:
+        def _try_fetch():
+            try:
+                self.bb.fetch(self.env['PN'])
+                return
+            except Error as e:
+                machine, failed_recipes = self._get_failed_recipes(e.stdout)
+                if not self.env['PN'] in failed_recipes:
+                    raise Error("Unknown error occured during fetch",
+                            stdout = e.stdout, stderr = e.stderr)
+
+                fetch_log = failed_recipes[self.env['PN']][1]
+
+                if not self._is_uri_failure(fetch_log) and not \
+                        self.checksums_changed:
                     self._change_recipe_checksums(fetch_log)
-                    return
-                else:
-                    raise FetchError()
+                    self.checksums_changed = True
+                    return True
 
-                if self.recipes_renamed and not self.checksums_changed:
-                    raise Error("fetch succeeded without changing checksums")
+                return False
 
-            elif self.suffix_index == len(self.suffixes):
-                # Every suffix tried without success
-                raise FetchError()                
+        succeed = _try_fetch()
+        if not succeed and not isinstance(self, GitRecipe):
+            for sfx in self.suffixes:
+                I(" Trying new SRC_URI suffix: %s ..." % sfx)
+                self._change_source_suffix(sfx)
+
+                succeed = _try_fetch()
+                if succeed:
+                    break
+
+        if not succeed:
+            raise Error("Can't built a valid SRC_URI")
+        elif self.recipes_renamed and not self.checksums_changed:
+            raise Error("Fetch succeeded without changing checksums")
 
     def cleanall(self):
         self.bb.cleanall(self.env['PN'])
