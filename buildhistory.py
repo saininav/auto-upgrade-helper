@@ -30,9 +30,6 @@ from errors import *
 from bitbake import *
 from git import Git
 
-os.environ['BB_ENV_EXTRAWHITE'] = os.environ['BB_ENV_EXTRAWHITE'] + \
-                                    " BUILDHISTORY_DIR"
-
 class BuildHistory(object):
     def __init__(self, bb, pn, workdir):
         self.bb = bb
@@ -46,6 +43,8 @@ class BuildHistory(object):
 
         self.git = Git(self.buildhistory_dir)
 
+        os.environ['BB_ENV_EXTRAWHITE'] = os.environ['BB_ENV_EXTRAWHITE'] + \
+                                    " BUILDHISTORY_DIR"
         os.environ["BUILDHISTORY_DIR"] = self.buildhistory_dir
 
     def init(self, machines):
