@@ -28,6 +28,7 @@
 
 import argparse
 import os
+import subprocess
 import logging as log
 from logging import debug as D
 from logging import info as I
@@ -734,17 +735,22 @@ if __name__ == "__main__":
     global settings
     global maintainer_override
 
+    if not os.getenv('BUILDDIR', False):
+        E(" You must source oe-init-build-env before running this script!\n")
+        exit(1)
+
+    devnull = open(os.devnull, 'wb')
+    if subprocess.call(["git", "config", "user.name"], stdout=devnull,stderr=devnull) or \
+        subprocess.call(["git", "config", "user.email"], stdout=devnull, stderr=devnull):
+        E(" Git isn't configured please configure user name and email\n")
+        exit(1)
+
     signal.signal(signal.SIGINT, close_child_processes)
 
     debug_levels = [log.CRITICAL, log.ERROR, log.WARNING, log.INFO, log.DEBUG]
     args = parse_cmdline()
     log.basicConfig(format='%(levelname)s:%(message)s',
                     level=debug_levels[args.debug_level - 1])
-
-    if not os.getenv('BUILDDIR', False):
-        E(" You must source oe-init-build-env before running this script!\n")
-        exit(1)
-
     settings, maintainer_override = parse_config_file(args.config_file)
 
     if args.recipe == "all":
