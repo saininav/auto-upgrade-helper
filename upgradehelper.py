@@ -132,9 +132,16 @@ class Updater(object):
         if not os.path.exists(self.uh_dir):
             os.mkdir(self.uh_dir)
 
-        self.uh_work_dir = os.path.join(self.uh_dir, "work")
-        if not os.path.exists(self.uh_work_dir):
-            os.mkdir(self.uh_work_dir)
+        self.uh_work_dir = os.path.join(self.uh_dir, "work-%s" % \
+                datetime.now().strftime("%Y%m%d%H%M"))
+        os.mkdir(self.uh_work_dir)
+
+        self.uh_recipes_all_dir = os.path.join(self.uh_work_dir, "all")
+        os.mkdir(self.uh_recipes_all_dir)
+        self.uh_recipes_succeed_dir = os.path.join(self.uh_work_dir, "succeed")
+        os.mkdir(self.uh_recipes_succeed_dir)
+        self.uh_recipes_failed_dir = os.path.join(self.uh_work_dir, "failed")
+        os.mkdir(self.uh_recipes_failed_dir)
 
         self.bb = Bitbake(get_build_dir())
         self.git = None
@@ -223,10 +230,7 @@ class Updater(object):
         self.env = self._get_env(self.pn)
 
     def _create_workdir(self):
-        self.workdir = os.path.join(self.uh_work_dir, self.pn)
-
-        if os.path.exists(self.workdir):
-            shutil.rmtree(self.workdir)
+        self.workdir = os.path.join(self.uh_recipes_all_dir, self.pn)
         os.mkdir(self.workdir)
 
     def _detect_repo(self):
@@ -490,6 +494,9 @@ class Updater(object):
                         I(" %s: %s" % (self.pn, msg))
                     step()
 
+                os.symlink(self.workdir, os.path.join( \
+                    self.uh_recipes_succeed_dir, self.pn))
+
                 I(" %s: Upgrade SUCCESSFUL! Please test!" % self.pn)
             except Exception as e:
                 if isinstance(e, UpgradeNotNeededError):
@@ -510,6 +517,9 @@ class Updater(object):
                             % (self.pn, self.workdir))
 
                 error = e
+
+                os.symlink(self.workdir, os.path.join( \
+                    self.uh_recipes_failed_dir, self.pn))
 
             self._commit_changes()
 
