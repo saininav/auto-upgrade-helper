@@ -88,7 +88,7 @@ class Git(object):
         return self._cmd("clean -fd")
 
     def last_commit(self, branch_name):
-        return self._cmd("log --pretty=format:\"%H\" -1" + branch_name)
+        return self._cmd("log --pretty=format:\"%H\" -1 " + branch_name)
 
     def ls_remote(self, repo_url=None, options=None, refs=None):
         cmd = "ls-remote"
