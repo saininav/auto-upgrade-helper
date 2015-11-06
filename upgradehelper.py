@@ -591,7 +591,16 @@ class Updater(object):
             self.statistics.update(self.pn, self.new_ver, self.maintainer, error)
 
         if (attempted_pkgs > 1):
-            I("%s" % self.statistics.pkg_stats())
+            statistics_summary = self.statistics.pkg_stats() + \
+                    self.statistics.maintainer_stats()
+
+            statistics_file = os.path.join(self.uh_work_dir,
+                    "statistics_summary")
+            with open(statistics_file, "w+") as f:
+                f.write(statistics_summary)
+
+            I("%s" % statistics_summary)
+
             if self.send_email:
                 self.send_status_mail()
 
