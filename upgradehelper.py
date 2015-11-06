@@ -91,7 +91,6 @@ def parse_cmdline():
 def get_build_dir():
     return os.getenv('BUILDDIR')
 
-
 def parse_config_file(config_file):
     settings = dict()
     maintainer_override = dict()
@@ -435,26 +434,6 @@ class Updater(object):
             I(" %s: %s" % (self.pn, e.stdout))
             raise e
 
-    def _order_list(self, package_list):
-        try:
-            self.bb.dependency_graph(' '.join(p[0] for p in package_list))
-        except Error as e:
-            multiple_providers = False
-            for l in e.stdout.split('\n'):
-                if l.find("ERROR: Multiple .bb files are due to be built which each provide") == 0:
-                    multiple_providers = True
-
-            if not multiple_providers:
-                raise e
-
-        dep_file = os.path.join(get_build_dir(), "pn-buildlist")
-        ordered_list = []
-        with open(dep_file) as deps:
-            for d in deps:
-                ordered_list.extend(p for p in package_list if p[0] == d.strip())
-
-        return ordered_list
-
     def send_status_mail(self):
         if "status_recipients" not in settings:
             E("Could not send status email, no recipients set!")
@@ -471,15 +450,99 @@ class Updater(object):
         else:
             W("No recipes attempted, not sending status mail!")
 
+
+    def _order_pkgs_to_upgrade(self, pkgs_to_upgrade):
+        def _get_pn_dep_dic(pn_list, dependency_file): 
+            import re
+
+            pn_dep_dic = {}
+
+            with open(dependency_file) as dep:
+                data = dep.read()
+                dep.close()
+
+                for line in data.split('\n'):
+                    m = re.search('^"(.*)" -> "(.*)"$', line)
+                    if not m:
+                        continue
+
+                    pn = m.group(1)
+                    pn_dep = m.group(2)
+                    if pn == pn_dep:
+                        continue
+
+                    if pn in pn_list:
+                        if pn_dep in pn_list:
+                            if pn in pn_dep_dic.keys():
+                                pn_dep_dic[pn].append(pn_dep)
+                            else:
+                                pn_dep_dic[pn] = [pn_dep]
+                        elif not pn in pn_dep_dic.keys():
+                            pn_dep_dic[pn] = []
+
+            return pn_dep_dic
+
+        def _dep_resolve(graph, node, resolved, seen):
+            seen.append(node)
+
+            for edge in graph[node]:
+                if edge not in resolved:
+                    if edge in seen:
+                        raise RuntimeError("Packages %s and %s have " \
+                                "a circular dependency." \
+                                % (node, edge))
+                    _dep_resolve(graph, edge, resolved, seen)
+
+            resolved.append(node)
+
+
+        pn_list = []
+        for pn, new_ver, maintainer in pkgs_to_upgrade:
+            pn_list.append(pn)
+
+        try:
+           self.bb.dependency_graph(' '.join(pn_list))
+        except Error as e:
+            multiple_providers = False
+            for l in e.stdout.split('\n'):
+                if l.find("ERROR: Multiple .bb files are due to be built which each provide") == 0:
+                    multiple_providers = True
+            if not multiple_providers:
+                raise e
+
+        dependency_file = os.path.join(get_build_dir(), "pn-depends.dot")
+
+        pkgs_to_upgrade_ordered = []
+        pn_list_ordered = []
+
+        pn_dep_dic = _get_pn_dep_dic(pn_list, dependency_file)
+        if pn_dep_dic:
+            root = "__root_node__"
+            pn_dep_dic[root] = pn_dep_dic.keys()
+            _dep_resolve(pn_dep_dic, root, pn_list_ordered, [])
+            pn_list_ordered.remove(root)
+
+        for pn_ordered in pn_list_ordered:
+            for pn, new_ver, maintainer in pkgs_to_upgrade:
+                if pn == pn_ordered: 
+                    pkgs_to_upgrade_ordered.append([pn, new_ver, maintainer])
+
+        return pkgs_to_upgrade_ordered
+
     def run(self, package_list=None):
         I(" Building gcc runtimes ...")
         for machine in self.machines:
             I("  building gcc runtime for %s" % machine)
             self.bb.complete("gcc-runtime", machine)
 
-        pkgs_to_upgrade = self._get_packages_to_upgrade(package_list)
-
+        pkgs_to_upgrade = self._order_pkgs_to_upgrade(
+                self._get_packages_to_upgrade(package_list))
         total_pkgs = len(pkgs_to_upgrade)
+
+        I(" ########### The list of recipes to be upgraded #############")
+        for p, v, m in pkgs_to_upgrade:
+            I(" %s, %s, %s" % (p, v, m))
+        I(" ############################################################")
 
         attempted_pkgs = 0
         for self.pn, self.new_ver, self.maintainer in pkgs_to_upgrade:
@@ -707,11 +770,6 @@ class UniverseUpdater(Updater):
         with open(get_build_dir() + "/upgrade-helper/last_checkpkg_run", "w+") as last_check:
             last_check.write(current_date + "," + cur_master_commit + "," +
                              last_checkpkg_file)
-
-        I(" ########### The list of recipes to be upgraded ############")
-        for p, v, m in pkgs_list:
-            I(" %s, %s, %s" % (p, v, m))
-        I(" ############################################################")
 
         return pkgs_list
 
