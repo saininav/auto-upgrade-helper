@@ -353,8 +353,6 @@ class Updater(object):
             self.git.reset_hard(1)
             self.git.clean_untracked()
 
-        # only send email to Maintainer when patch file exist
-        if self.send_email and self.patch_file:
             mail_header = \
                 "Hello,\n\nYou are receiving this email because you are the maintainer\n" \
                 "of *%s* recipe and this is to let you know that the automatic attempt\n" \
@@ -414,6 +412,8 @@ class Updater(object):
                 if os.path.isfile(attachment_fullpath):
                     attachments.append(attachment_fullpath)
 
+        # Only send email to Maintainer when recipe upgrade succeed.
+        if self.send_email and not err:
             self.email_handler.send_email(to_addr, subject, msg_body, attachments, cc_addr=cc_addr)
 
     def _commit_changes(self):
