@@ -353,64 +353,61 @@ class Updater(object):
             self.git.reset_hard(1)
             self.git.clean_untracked()
 
-            mail_header = \
-                "Hello,\n\nYou are receiving this email because you are the maintainer\n" \
-                "of *%s* recipe and this is to let you know that the automatic attempt\n" \
-                "to upgrade the recipe to *%s* has %s.\n\n"
+        mail_header = \
+            "Hello,\n\nYou are receiving this email because you are the maintainer\n" \
+            "of *%s* recipe and this is to let you know that the automatic attempt\n" \
+            "to upgrade the recipe to *%s* has %s.\n\n"
 
-            license_change_info = \
-                "*LICENSE CHANGED* please review the %s file and update the LICENSE\n" \
-                "variable in the recipe if is needed.\n\n"
+        license_change_info = \
+            "*LICENSE CHANGED* please review the %s file and update the LICENSE\n" \
+            "variable in the recipe if is needed.\n\n"
 
-            next_steps_info = \
-                "The recipe has been successfully compiled for machines %s.\n\n" \
-                "Next steps:\n" \
-                "    - apply the patch: git am %s\n" \
-                "    - check that required patches have not been removed from the recipe\n" \
-                "    - compile an image that contains the package\n" \
-                "    - perform some basic sanity tests\n" \
-                "    - amend the patch and sign it off: git commit -s --reset-author --amend\n" \
-                "    - send it to the list\n\n" \
+        next_steps_info = \
+            "The recipe has been successfully compiled for machines %s.\n\n" \
+            "Next steps:\n" \
+            "    - apply the patch: git am %s\n" \
+            "    - check that required patches have not been removed from the recipe\n" \
+            "    - compile an image that contains the package\n" \
+            "    - perform some basic sanity tests\n" \
+            "    - amend the patch and sign it off: git commit -s --reset-author --amend\n" \
+            "    - send it to the list\n\n" \
 
-            mail_footer = \
-                "Attached are the patch, license diff (if change) and bitbake log.\n" \
-                "Any problem please contact Anibal Limon <anibal.limon@intel.com>.\n\n" \
-                "Regards,\nThe Upgrade Helper"
+        mail_footer = \
+            "Attached are the patch, license diff (if change) and bitbake log.\n" \
+            "Any problem please contact Anibal Limon <anibal.limon@intel.com>.\n\n" \
+            "Regards,\nThe Upgrade Helper"
 
-            if self.maintainer in maintainer_override:
-                to_addr = maintainer_override[self.maintainer]
-            else:
-                to_addr = self.maintainer
+        if self.maintainer in maintainer_override:
+            to_addr = maintainer_override[self.maintainer]
+        else:
+            to_addr = self.maintainer
 
-            cc_addr = None
-            if "status_recipients" in settings:
-                cc_addr = settings["status_recipients"].split()
+        cc_addr = None
+        if "status_recipients" in settings:
+            cc_addr = settings["status_recipients"].split()
 
-            subject = "[AUH] " + self.pn + ": upgrading to " + self.new_ver
-            if err is None:
-                subject += " SUCCEEDED"
-            else:
-                subject += " FAILED"
+        subject = "[AUH] " + self.pn + ": upgrading to " + self.new_ver
+        if not err:
+            subject += " SUCCEEDED"
+        else:
+            subject += " FAILED"
+        msg_body = mail_header % (self.pn, self.new_ver,
+                self._get_status_msg(err))
+        license_diff_fn = self.recipe.get_license_diff_file_name()
+        if license_diff_fn:
+            msg_body += license_change_info % license_diff_fn
+        if not err:
+            msg_body += next_steps_info % (', '.join(self.machines),
+                    os.path.basename(self.patch_file))
 
-            msg_body = mail_header % (self.pn, self.new_ver,
-                    self._get_status_msg(err))
+        msg_body += mail_footer
 
-            license_diff_fn = self.recipe.get_license_diff_file_name()
-            if license_diff_fn:
-                msg_body += license_change_info % license_diff_fn
-
-            if err is None:
-                msg_body += next_steps_info % (', '.join(self.machines),
-                        os.path.basename(self.patch_file))
-
-            msg_body += mail_footer
-
-            # Add possible attachments to email
-            attachments = []
-            for attachment in os.listdir(self.workdir):
-                attachment_fullpath = os.path.join(self.workdir, attachment)
-                if os.path.isfile(attachment_fullpath):
-                    attachments.append(attachment_fullpath)
+        # Add possible attachments to email
+        attachments = []
+        for attachment in os.listdir(self.workdir):
+            attachment_fullpath = os.path.join(self.workdir, attachment)
+            if os.path.isfile(attachment_fullpath):
+                attachments.append(attachment_fullpath)
 
         # Only send email to Maintainer when recipe upgrade succeed.
         if self.send_email and not err:
