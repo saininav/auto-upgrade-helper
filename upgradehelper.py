@@ -413,6 +413,20 @@ class Updater(object):
         if self.send_email and not err:
             self.email_handler.send_email(to_addr, subject, msg_body, attachments, cc_addr=cc_addr)
 
+        # Preserve email for review purposes.
+        email_file = os.path.join(self.workdir,
+                    "email_summary")
+        with open(email_file, "w+") as f:
+            f.write("To: %s\n" % to_addr)
+            if isinstance(cc_addr, list):
+                f.write("To: %s\n" % ' '.join(to_addr))
+            else:
+                f.write("Cc: %s\n" % to_addr)
+
+            f.write("Subject: %s\n" % subject)
+            f.write("Attachments: %s\n" % ' '.join(attachments))
+            f.write("\n%s\n" % msg_body)
+
     def _commit_changes(self):
         try:
             self.patch_file = None
