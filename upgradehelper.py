@@ -126,31 +126,44 @@ def parse_config_file(config_file):
 
 class Updater(object):
     def __init__(self, auto_mode=False, send_email=False, skip_compilation=False):
+        build_dir = get_build_dir()
 
-        self.uh_dir = os.path.join(get_build_dir(), "upgrade-helper")
+        self.bb = Bitbake(build_dir)
+
+        try:
+            self.base_env = self.bb.env()
+        except EmptyEnvError as e:
+            import traceback
+            E( " %s\n%s" % (e.message, traceback.format_exc()))
+            E( " Bitbake output:\n%s" % (e.stdout))
+            exit(1)
+
+        self.email_handler = Email(settings)
+        self.statistics = Statistics()
+        self.git = None
+
+        self.opts = {}
+        self.opts['interactive'] = not auto_mode
+        self.opts['send_email'] = send_email
+        self.opts['author'] = "Upgrade Helper <%s>" % \
+                settings.get('from', 'uh@not.set')
+        self.opts['machines'] = settings.get('machines',
+                'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
+        self.opts['skip_compilation'] = skip_compilation
+        self.opts['buildhistory_enabled'] = self._buildhistory_is_enabled()
+
+        self.uh_dir = os.path.join(build_dir, "upgrade-helper")
         if not os.path.exists(self.uh_dir):
             os.mkdir(self.uh_dir)
-
         self.uh_work_dir = os.path.join(self.uh_dir, "work-%s" % \
                 datetime.now().strftime("%Y%m%d%H%M%S"))
         os.mkdir(self.uh_work_dir)
-
         self.uh_recipes_all_dir = os.path.join(self.uh_work_dir, "all")
         os.mkdir(self.uh_recipes_all_dir)
         self.uh_recipes_succeed_dir = os.path.join(self.uh_work_dir, "succeed")
         os.mkdir(self.uh_recipes_succeed_dir)
         self.uh_recipes_failed_dir = os.path.join(self.uh_work_dir, "failed")
         os.mkdir(self.uh_recipes_failed_dir)
-
-        self.bb = Bitbake(get_build_dir())
-        self.git = None
-        self.author_email = settings.get('from', 'uh@not.set')
-        self.author = "Upgrade Helper <%s>" % self.author_email
-        self.skip_compilation = skip_compilation
-        self.interactive = not auto_mode
-        self.send_email = send_email
-
-        self.machines = settings.get('machines', 'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
 
         self.upgrade_steps = [
             (self._load_env, "Loading environment ..."),
@@ -166,18 +179,6 @@ class Updater(object):
             (self._compile, None),
             (self._buildhistory_diff, None)
         ]
-
-        try:
-            self.base_env = self.bb.env()
-        except EmptyEnvError as e:
-            import traceback
-            E( " %s\n%s" % (e.message, traceback.format_exc()))
-            E( " Bitbake output:\n%s" % (e.stdout))
-            exit(1)
-        self.buildhistory_enabled = self._buildhistory_is_enabled()
-
-        self.email_handler = Email(settings)
-        self.statistics = Statistics()
 
     def _get_status_msg(self, err):
         if err:
@@ -199,7 +200,7 @@ class Updater(object):
                         " BUILDHISTORY_COMMIT=1 please set.")
                 exit(1)
 
-            if self.skip_compilation:
+            if self.opts['skip_compilation']:
                 W(" Buildhistory disabled because user" \
                         " skip compilation!")
             else:
@@ -228,7 +229,7 @@ class Updater(object):
 
         stdout = self.git.status()
         if stdout != "":
-            if self.interactive:
+            if self.opts['interactive']:
                 W(" %s: git repository has uncommited work which will be dropped! Proceed? (y/N)" % self.pn)
                 answer = sys.stdin.readline().strip().upper()
                 if answer == '' or answer != 'Y':
@@ -261,16 +262,16 @@ class Updater(object):
         else:
             raise UnsupportedProtocolError
 
-        self.recipe = recipe(self.env, self.new_ver, self.interactive, self.workdir,
+        self.recipe = recipe(self.env, self.new_ver, self.opts['interactive'], self.workdir,
                              self.recipe_dir, self.bb, self.git)
 
     def _buildhistory_init(self):
-        if self.buildhistory_enabled == False:
+        if not self.opts['buildhistory_enabled']:
             return
 
         self.buildhistory = BuildHistory(self.bb, self.pn, self.workdir)
-        I(" %s: Initial buildhistory for %s ..." % (self.pn, self.machines))
-        self.buildhistory.init(self.machines)
+        I(" %s: Initial buildhistory for %s ..." % (self.pn, self.opts['machines']))
+        self.buildhistory.init(self.opts['machines'])
 
     def _unpack_original(self):
         self.recipe.unpack()
@@ -289,18 +290,18 @@ class Updater(object):
         self.recipe.fetch()
 
     def _compile(self):
-        if self.skip_compilation:
+        if self.opts['skip_compilation']:
             W(" %s: Compilation was skipped by user choice!")
             return
 
-        for machine in self.machines:
+        for machine in self.opts['machines']:
             I(" %s: compiling for %s ..." % (self.pn, machine))
             self.recipe.compile(machine)
-            if self.buildhistory_enabled == True:
+            if self.opts['buildhistory_enabled']:
                 self.buildhistory.add()
 
     def _buildhistory_diff(self):
-        if self.buildhistory_enabled == False:
+        if not self.opts['buildhistory_enabled']:
             return
 
         I(" %s: Checking buildhistory ..." % self.pn)
@@ -315,7 +316,7 @@ class Updater(object):
 
     # this function will be called at the end of each recipe upgrade
     def pkg_upgrade_handler(self, err):
-        if err and self.patch_file and self.interactive:
+        if err and self.patch_file and self.opts['interactive']:
             answer = "N"
             I(" %s: Do you want to keep the changes? (y/N)" % self.pn)
             answer = sys.stdin.readline().strip().upper()
@@ -380,7 +381,7 @@ class Updater(object):
         if license_diff_fn:
             msg_body += license_change_info % license_diff_fn
         if not err:
-            msg_body += next_steps_info % (', '.join(self.machines),
+            msg_body += next_steps_info % (', '.join(self.opts['machines']),
                     os.path.basename(self.patch_file))
 
         msg_body += mail_footer
@@ -393,7 +394,7 @@ class Updater(object):
                 attachments.append(attachment_fullpath)
 
         # Only send email to Maintainer when recipe upgrade succeed.
-        if self.send_email and not err:
+        if self.opts['send_email'] and not err:
             self.email_handler.send_email(to_addr, subject, msg_body, attachments, cc_addr=cc_addr)
 
         # Preserve email for review purposes.
@@ -415,7 +416,7 @@ class Updater(object):
             self.patch_file = None
             if self.recipe is not None:
                 I(" %s: Auto commit changes ..." % self.pn)
-                self.git.commit(self.recipe.commit_msg, self.author)
+                self.git.commit(self.recipe.commit_msg, self.opts['author'])
                 I(" %s: Save patch in %s." % (self.pn, self.workdir))
                 stdout = self.git.create_patch(self.workdir)
                 self.patch_file = stdout.strip()
@@ -525,7 +526,7 @@ class Updater(object):
 
     def run(self, package_list=None):
         I(" Building gcc runtimes ...")
-        for machine in self.machines:
+        for machine in self.opts['machines']:
             I("  building gcc runtime for %s" % machine)
             self.bb.complete("gcc-runtime", machine)
 
@@ -595,7 +596,7 @@ class Updater(object):
 
             I("%s" % statistics_summary)
 
-            if self.send_email:
+            if self.opts['send_email']:
                 self.send_status_mail()
 
 class UniverseUpdater(Updater):
