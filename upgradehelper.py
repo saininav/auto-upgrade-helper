@@ -132,7 +132,7 @@ class Updater(object):
             os.mkdir(self.uh_dir)
 
         self.uh_work_dir = os.path.join(self.uh_dir, "work-%s" % \
-                datetime.now().strftime("%Y%m%d%H%M"))
+                datetime.now().strftime("%Y%m%d%H%M%S"))
         os.mkdir(self.uh_work_dir)
 
         self.uh_recipes_all_dir = os.path.join(self.uh_work_dir, "all")
