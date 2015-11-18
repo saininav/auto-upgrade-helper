@@ -29,12 +29,14 @@
 import argparse
 import os
 import subprocess
+
 import logging as log
 from logging import debug as D
 from logging import info as I
 from logging import warning as W
 from logging import error as E
 from logging import critical as C
+
 import re
 import signal
 import sys
@@ -43,14 +45,14 @@ from datetime import datetime
 from datetime import date
 import shutil
 from errors import *
+
 from git import Git
 from bitbake import Bitbake
-from buildhistory import BuildHistory
+
 from emailhandler import Email
 from statistics import Statistics
-from recipe import Recipe
-from gitrecipe import GitRecipe
-from svnrecipe import SvnRecipe
+
+from steps import upgrade_steps
 
 help_text = """Usage examples:
 * To upgrade xmodmap recipe to the latest available version, interactively:
@@ -140,7 +142,8 @@ class Updater(object):
 
         self.email_handler = Email(settings)
         self.statistics = Statistics()
-        self.git = None
+        # XXX: assume that the poky directory is the first entry in the PATH
+        self.git = Git(os.path.dirname(os.getenv('PATH', False).split(':')[0]))
 
         self.opts = {}
         self.opts['interactive'] = not auto_mode
@@ -164,21 +167,6 @@ class Updater(object):
         os.mkdir(self.uh_recipes_succeed_dir)
         self.uh_recipes_failed_dir = os.path.join(self.uh_work_dir, "failed")
         os.mkdir(self.uh_recipes_failed_dir)
-
-        self.upgrade_steps = [
-            (self._load_env, "Loading environment ..."),
-            (self._create_workdir, None),
-            (self._detect_repo, "Detecting git repository location ..."),
-            (self._clean_repo, "Cleaning git repository of temporary branch ..."),
-            (self._detect_recipe_type, None),
-            (self._buildhistory_init, None),
-            (self._unpack_original, "Fetch & unpack original version ..."),
-            (self._rename, "Renaming recipes, reset PR (if exists) ..."),
-            (self._cleanall, "Clean all ..."),
-            (self._fetch, "Fetch new version (old checksums) ..."),
-            (self._compile, None),
-            (self._buildhistory_diff, None)
-        ]
 
     def _get_status_msg(self, err):
         if err:
@@ -208,105 +196,6 @@ class Updater(object):
 
         return enabled
 
-    def _load_env(self):
-        self.env = self.bb.env(self.pn)
-
-    def _create_workdir(self):
-        self.workdir = os.path.join(self.uh_recipes_all_dir, self.pn)
-        os.mkdir(self.workdir)
-
-    def _detect_repo(self):
-        self.recipe_dir = os.path.dirname(self.env['FILE'])
-
-        if self.env['PV'] == self.new_ver:
-            raise UpgradeNotNeededError
-
-        # UniverseUpdater use git poky respository 
-        if isinstance(self.git, UniverseUpdater):
-            return
-
-        self.git = Git(self.recipe_dir)
-
-        stdout = self.git.status()
-        if stdout != "":
-            if self.opts['interactive']:
-                W(" %s: git repository has uncommited work which will be dropped! Proceed? (y/N)" % self.pn)
-                answer = sys.stdin.readline().strip().upper()
-                if answer == '' or answer != 'Y':
-                    I(" %s: User abort!" % self.pn)
-                    exit(0)
-
-            W(" %s: Dropping uncommited work!" % self.pn)
-            self.git.reset_hard()
-            self.git.clean_untracked()
-
-            self.env = self.bb.env(self.pn)
-
-    def _clean_repo(self):
-        try:
-            self.git.checkout_branch("upgrades")
-        except Error:
-            self.git.create_branch("upgrades")
-        try:
-            self.git.delete_branch("remove_patches")
-        except:
-            pass
-
-    def _detect_recipe_type(self):
-        if self.env['SRC_URI'].find("ftp://") != -1 or  \
-                self.env['SRC_URI'].find("http://") != -1 or \
-                self.env['SRC_URI'].find("https://") != -1:
-            recipe = Recipe
-        elif self.env['SRC_URI'].find("git://") != -1:
-            recipe = GitRecipe
-        else:
-            raise UnsupportedProtocolError
-
-        self.recipe = recipe(self.env, self.new_ver, self.opts['interactive'], self.workdir,
-                             self.recipe_dir, self.bb, self.git)
-
-    def _buildhistory_init(self):
-        if not self.opts['buildhistory_enabled']:
-            return
-
-        self.buildhistory = BuildHistory(self.bb, self.pn, self.workdir)
-        I(" %s: Initial buildhistory for %s ..." % (self.pn, self.opts['machines']))
-        self.buildhistory.init(self.opts['machines'])
-
-    def _unpack_original(self):
-        self.recipe.unpack()
-
-    def _rename(self):
-        self.recipe.rename()
-
-        self.env = self.bb.env(self.pn)
-
-        self.recipe.update_env(self.env)
-
-    def _cleanall(self):
-        self.recipe.cleanall()
-
-    def _fetch(self):
-        self.recipe.fetch()
-
-    def _compile(self):
-        if self.opts['skip_compilation']:
-            W(" %s: Compilation was skipped by user choice!")
-            return
-
-        for machine in self.opts['machines']:
-            I(" %s: compiling for %s ..." % (self.pn, machine))
-            self.recipe.compile(machine)
-            if self.opts['buildhistory_enabled']:
-                self.buildhistory.add()
-
-    def _buildhistory_diff(self):
-        if not self.opts['buildhistory_enabled']:
-            return
-
-        I(" %s: Checking buildhistory ..." % self.pn)
-        self.buildhistory.diff()
-
     def _get_packages_to_upgrade(self, packages=None):
         if packages is None:
             I( "Nothing to upgrade")
@@ -315,14 +204,14 @@ class Updater(object):
             return packages
 
     # this function will be called at the end of each recipe upgrade
-    def pkg_upgrade_handler(self, err):
-        if err and self.patch_file and self.opts['interactive']:
+    def pkg_upgrade_handler(self, pkg_ctx):
+        if self.opts['interactive'] and pkg_ctx['error'] and pkg_ctx['patch_file']:
             answer = "N"
-            I(" %s: Do you want to keep the changes? (y/N)" % self.pn)
+            I(" %s: Do you want to keep the changes? (y/N)" % pkg_ctx['PN'])
             answer = sys.stdin.readline().strip().upper()
 
             if answer == '' or answer == 'N':
-                I(" %s: Dropping changes from git ..." % self.pn)
+                I(" %s: Dropping changes from git ..." % pkg_ctx['PN'])
                 self.git.reset_hard(1)
                 self.git.clean_untracked()
                 return
@@ -331,8 +220,8 @@ class Updater(object):
         # problems and other recipes depend on it. Give the other recipes a
         # chance...
         if (settings.get("drop_previous_commits", "no") == "yes" and
-                not err) or (err and self.patch_file):
-            I(" %s: Dropping changes from git ..." % self.pn)
+                not pkg_ctx['error']) or (pkg_ctx['error'] and pkg_ctx['patch_file']):
+            I(" %s: Dropping changes from git ..." % pkg_ctx['PN'])
             self.git.reset_hard(1)
             self.git.clean_untracked()
 
@@ -361,44 +250,44 @@ class Updater(object):
             "Any problem please contact Anibal Limon <anibal.limon@intel.com>.\n\n" \
             "Regards,\nThe Upgrade Helper"
 
-        if self.maintainer in maintainer_override:
-            to_addr = maintainer_override[self.maintainer]
+        if pkg_ctx['MAINTAINER'] in maintainer_override:
+            to_addr = maintainer_override[pkg_ctx['MAINTAINER']]
         else:
-            to_addr = self.maintainer
+            to_addr = pkg_ctx['MAINTAINER']
 
         cc_addr = None
         if "status_recipients" in settings:
             cc_addr = settings["status_recipients"].split()
 
-        subject = "[AUH] " + self.pn + ": upgrading to " + self.new_ver
-        if not err:
+        subject = "[AUH] " + pkg_ctx['PN'] + ": upgrading to " + pkg_ctx['NPV']
+        if not pkg_ctx['error']:
             subject += " SUCCEEDED"
         else:
             subject += " FAILED"
-        msg_body = mail_header % (self.pn, self.new_ver,
-                self._get_status_msg(err))
-        license_diff_fn = self.recipe.get_license_diff_file_name()
+        msg_body = mail_header % (pkg_ctx['PN'], pkg_ctx['NPV'],
+                self._get_status_msg(pkg_ctx['error']))
+        license_diff_fn = pkg_ctx['recipe'].get_license_diff_file_name()
         if license_diff_fn:
             msg_body += license_change_info % license_diff_fn
-        if not err:
+        if not pkg_ctx['error']:
             msg_body += next_steps_info % (', '.join(self.opts['machines']),
-                    os.path.basename(self.patch_file))
+                    os.path.basename(pkg_ctx['patch_file']))
 
         msg_body += mail_footer
 
         # Add possible attachments to email
         attachments = []
-        for attachment in os.listdir(self.workdir):
-            attachment_fullpath = os.path.join(self.workdir, attachment)
+        for attachment in os.listdir(pkg_ctx['workdir']):
+            attachment_fullpath = os.path.join(pkg_ctx['workdir'], attachment)
             if os.path.isfile(attachment_fullpath):
                 attachments.append(attachment_fullpath)
 
         # Only send email to Maintainer when recipe upgrade succeed.
-        if self.opts['send_email'] and not err:
+        if self.opts['send_email'] and not pkg_ctx['error']:
             self.email_handler.send_email(to_addr, subject, msg_body, attachments, cc_addr=cc_addr)
 
         # Preserve email for review purposes.
-        email_file = os.path.join(self.workdir,
+        email_file = os.path.join(pkg_ctx['workdir'],
                     "email_summary")
         with open(email_file, "w+") as f:
             f.write("To: %s\n" % to_addr)
@@ -411,22 +300,26 @@ class Updater(object):
             f.write("Attachments: %s\n" % ' '.join(attachments))
             f.write("\n%s\n" % msg_body)
 
-    def _commit_changes(self):
+    def commit_changes(self, pkg_ctx):
         try:
-            self.patch_file = None
-            if self.recipe is not None:
-                I(" %s: Auto commit changes ..." % self.pn)
-                self.git.commit(self.recipe.commit_msg, self.opts['author'])
-                I(" %s: Save patch in %s." % (self.pn, self.workdir))
-                stdout = self.git.create_patch(self.workdir)
-                self.patch_file = stdout.strip()
+            pkg_ctx['patch_file'] = None
+
+            if pkg_ctx['recipe']:
+                I(" %s: Auto commit changes ..." % pkg_ctx['PN'])
+                self.git.commit(pkg_ctx['recipe'].commit_msg, self.opts['author'])
+
+                I(" %s: Save patch in directory: %s." %
+                        (pkg_ctx['PN'], pkg_ctx['workdir']))
+
+                stdout = self.git.create_patch(pkg_ctx['workdir'])
+                pkg_ctx['patch_file'] = stdout.strip()
         except Error as e:
             for line in e.stdout.split("\n"):
                 if line.find("nothing to commit") == 0:
-                    I(" %s: Nothing to commit!" % self.pn)
+                    I(" %s: Nothing to commit!" % pkg_ctx['PN'])
                     return
 
-            I(" %s: %s" % (self.pn, e.stdout))
+            I(" %s: %s" % (pkg_ctx['PN'], e.stdout))
             raise e
 
     def send_status_mail(self):
@@ -444,7 +337,6 @@ class Updater(object):
             self.email_handler.send_email(to_list, subject, msg)
         else:
             W("No recipes attempted, not sending status mail!")
-
 
     def _order_pkgs_to_upgrade(self, pkgs_to_upgrade):
         def _get_pn_dep_dic(pn_list, dependency_file): 
@@ -534,33 +426,43 @@ class Updater(object):
                 self._get_packages_to_upgrade(package_list))
         total_pkgs = len(pkgs_to_upgrade)
 
+        pkgs_ctx = {}
+
         I(" ########### The list of recipes to be upgraded #############")
         for p, v, m in pkgs_to_upgrade:
             I(" %s, %s, %s" % (p, v, m))
+
+            pkgs_ctx[p] = {}
+            pkgs_ctx[p]['PN'] = p
+            pkgs_ctx[p]['NPV'] = v
+            pkgs_ctx[p]['MAINTAINER'] = m
+
+            pkgs_ctx[p]['base_dir'] = self.uh_recipes_all_dir
         I(" ############################################################")
 
         attempted_pkgs = 0
-        for self.pn, self.new_ver, self.maintainer in pkgs_to_upgrade:
-            error = None
-            self.recipe = None
+        for pn, _, _ in pkgs_to_upgrade:
+            pkg_ctx = pkgs_ctx[pn]
+            pkg_ctx['error'] = None
+
             attempted_pkgs += 1
             I(" ATTEMPT PACKAGE %d/%d" % (attempted_pkgs, total_pkgs))
             try:
-                I(" %s: Upgrading to %s" % (self.pn, self.new_ver))
-                for step, msg in self.upgrade_steps:
+                I(" %s: Upgrading to %s" % (pkg_ctx['PN'], pkg_ctx['NPV']))
+                for step, msg in upgrade_steps:
                     if msg is not None:
-                        I(" %s: %s" % (self.pn, msg))
-                    step()
+                        I(" %s: %s" % (pkg_ctx['PN'], msg))
+                    step(self.bb, self.git, self.opts, pkg_ctx)
 
-                os.symlink(self.workdir, os.path.join( \
-                    self.uh_recipes_succeed_dir, self.pn))
+                os.symlink(pkg_ctx['workdir'], os.path.join( \
+                    self.uh_recipes_succeed_dir, pkg_ctx['PN']))
 
-                I(" %s: Upgrade SUCCESSFUL! Please test!" % self.pn)
+                I(" %s: Upgrade SUCCESSFUL! Please test!" % pkg_ctx['PN'])
             except Exception as e:
                 if isinstance(e, UpgradeNotNeededError):
-                    I(" %s: %s" % (self.pn, e.message))
+                    I(" %s: %s" % (pkg_ctx['PN'], e.message))
                 elif isinstance(e, UnsupportedProtocolError):
-                    I(" %s: %s" % (self.pn, e.message))
+                    I(" %s: %s" % (pkg_ctx['PN'], e.message))
                 else:
                     if not isinstance(e, Error):
                         import traceback
@@ -568,24 +470,25 @@ class Updater(object):
                         e = Error(message=msg)
                         error = e
 
-                    E(" %s: %s" % (self.pn, e.message))
+                    E(" %s: %s" % (pkg_ctx['PN'], e.message))
 
-                    if os.listdir(self.workdir):
+                    if os.listdir(pkg_ctx['workdir']):
                         E(" %s: Upgrade FAILED! Logs and/or file diffs are available in %s"
-                            % (self.pn, self.workdir))
+                            % (pkg_ctx['PN'], pkg_ctx['workdir']))
 
-                error = e
+                pkg_ctx['error'] = e
 
-                os.symlink(self.workdir, os.path.join( \
-                    self.uh_recipes_failed_dir, self.pn))
+                os.symlink(pkg_ctx['workdir'], os.path.join( \
+                    self.uh_recipes_failed_dir, pkg_ctx['PN']))
 
-            self._commit_changes()
+            self.commit_changes(pkg_ctx)
 
-            self.pkg_upgrade_handler(error)
+            self.statistics.update(pkg_ctx['PN'], pkg_ctx['NPV'],
+                    pkg_ctx['MAINTAINER'], pkg_ctx['error'])
 
-            self.statistics.update(self.pn, self.new_ver, self.maintainer, error)
+            self.pkg_upgrade_handler(pkg_ctx)
 
-        if (attempted_pkgs > 1):
+        if attempted_pkgs > 1:
             statistics_summary = self.statistics.pkg_stats() + \
                     self.statistics.maintainer_stats()
 
@@ -602,9 +505,6 @@ class Updater(object):
 class UniverseUpdater(Updater):
     def __init__(self):
         Updater.__init__(self, True, True)
-
-        # XXX: assume that the poky directory is the first entry in the PATH
-        self.git = Git(os.path.dirname(os.getenv('PATH', False).split(':')[0]))
 
         # read history file
         self.history_file = os.path.join(get_build_dir(), "upgrade-helper", "history.uh")
@@ -641,7 +541,6 @@ class UniverseUpdater(Updater):
                 os.path.exists(os.path.join(get_build_dir(), "tmp")):
             I(" Removing tmp directory ...")
             shutil.rmtree(os.path.join(get_build_dir(), "tmp"))
-
 
     def _check_upstream_versions(self, packages=[("universe", None, None)]):
         I(" Fetching upstream version(s) ...")
@@ -789,10 +688,10 @@ class UniverseUpdater(Updater):
                            upgrade_status + "\n")
         os.rename(self.history_file + ".tmp", self.history_file)
 
-    def pkg_upgrade_handler(self, err):
-        super(UniverseUpdater, self).pkg_upgrade_handler(err)
-        self._update_history(self.pn, self.new_ver, self.maintainer,
-                self._get_status_msg(err))
+    def pkg_upgrade_handler(self, pkg_ctx):
+        super(UniverseUpdater, self).pkg_upgrade_handler(pkg_ctx)
+        self._update_history(pkg_ctx['PN'], pkg_ctx['NPV'], pkg_ctx['MAINTAINER'],
+                self._get_status_msg(pkg_ctx['error']))
 
     def run(self):
         self._update_master()
