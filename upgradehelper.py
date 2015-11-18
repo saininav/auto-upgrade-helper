@@ -168,7 +168,7 @@ class Updater(object):
         ]
 
         try:
-            self.base_env = self._get_env()
+            self.base_env = self.bb.env()
         except EmptyEnvError as e:
             import traceback
             E( " %s\n%s" % (e.message, traceback.format_exc()))
@@ -184,24 +184,6 @@ class Updater(object):
             return str(err)
         else:
             return "Succeeded"
-
-    def _get_env(self, pn=None):
-        stdout = self.bb.env(pn)
-
-        assignment = re.compile("^([^ \t=]*)=(.*)")
-        bb_env = dict()
-        for line in stdout.split('\n'):
-            m = assignment.match(line)
-            if m:
-                if m.group(1) in bb_env:
-                    continue
-
-                bb_env[m.group(1)] = m.group(2).strip("\"")
-
-        if not bb_env:
-            raise EmptyEnvError(stdout)
-
-        return bb_env
 
     def _buildhistory_is_enabled(self):
         enabled = False
@@ -226,7 +208,7 @@ class Updater(object):
         return enabled
 
     def _load_env(self):
-        self.env = self._get_env(self.pn)
+        self.env = self.bb.env(self.pn)
 
     def _create_workdir(self):
         self.workdir = os.path.join(self.uh_recipes_all_dir, self.pn)
@@ -257,7 +239,7 @@ class Updater(object):
             self.git.reset_hard()
             self.git.clean_untracked()
 
-            self.env = self._get_env(self.pn)
+            self.env = self.bb.env(self.pn)
 
     def _clean_repo(self):
         try:
@@ -296,7 +278,7 @@ class Updater(object):
     def _rename(self):
         self.recipe.rename()
 
-        self.env = self._get_env(self.pn)
+        self.env = self.bb.env(self.pn)
 
         self.recipe.update_env(self.env)
 

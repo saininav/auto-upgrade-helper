@@ -29,6 +29,8 @@ from logging import debug as D
 from logging import error as E
 from logging import critical as C
 import sys
+import re
+
 from errors import *
 
 for path in os.environ["PATH"].split(':'):
@@ -80,7 +82,22 @@ class Bitbake(object):
         return os.path.join(self.log_dir, BITBAKE_ERROR_LOG)
 
     def env(self, recipe=None):
-        return self._cmd(recipe, "-e", output_filter="-v \"^#\"")
+        stdout = self._cmd(recipe, "-e", output_filter="-v \"^#\"")
+
+        assignment = re.compile("^([^ \t=]*)=(.*)")
+        bb_env = dict()
+        for line in stdout.split('\n'):
+            m = assignment.match(line)
+            if m:
+                if m.group(1) in bb_env:
+                    continue
+
+                bb_env[m.group(1)] = m.group(2).strip("\"")
+
+        if not bb_env:
+            raise EmptyEnvError(stdout)
+
+        return bb_env
 
     def fetch(self, recipe):
         return self._cmd(recipe, "-c fetch")
