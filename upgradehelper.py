@@ -44,14 +44,17 @@ import ConfigParser as cp
 from datetime import datetime
 from datetime import date
 import shutil
+
+sys.path.insert(1, os.path.join(os.path.abspath(
+    os.path.dirname(__file__)), 'modules'))
+
 from errors import *
 
-from git import Git
-from bitbake import Bitbake
+from utils.git import Git
+from utils.bitbake import Bitbake
+from utils.emailhandler import Email
 
-from emailhandler import Email
 from statistics import Statistics
-
 from steps import upgrade_steps
 
 help_text = """Usage examples:

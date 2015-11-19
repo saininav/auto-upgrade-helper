@@ -29,9 +29,10 @@ from logging import critical as C
 
 from errors import *
 from buildhistory import BuildHistory
-from recipe import Recipe
-from gitrecipe import GitRecipe
-from svnrecipe import SvnRecipe
+
+from recipe.base import Recipe
+from recipe.git import GitRecipe
+from recipe.svn import SvnRecipe
 
 def load_env(bb, git, opts, pkg_ctx):
     stdout = git.status()

@@ -26,10 +26,10 @@ from logging import warning as W
 from logging import error as E
 from logging import critical as C
 import sys
-from errors import *
 
-from bitbake import *
-from git import Git
+from errors import *
+from utils.git import Git
+from utils.bitbake import *
 
 class BuildHistory(object):
     def __init__(self, bb, pn, workdir):

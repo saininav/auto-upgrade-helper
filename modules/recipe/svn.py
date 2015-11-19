@@ -22,7 +22,7 @@
 # Marius Avram      <marius.avram@intel.com>
 #
 
-from recipe import Recipe
+from base import Recipe
 
 class SvnRecipe(Recipe):
     pass

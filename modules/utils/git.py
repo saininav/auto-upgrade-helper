@@ -25,7 +25,8 @@
 import os
 import logging as log
 from logging import debug as D
-from bitbake import *
+
+from utils.bitbake import *
 
 class Git(object):
     def __init__(self, dir):

@@ -22,7 +22,7 @@
 # Marius Avram      <marius.avram@intel.com>
 #
 
-from recipe import *
+from recipe.base import Recipe
 
 class GitRecipe(Recipe):
     def _extract_tag_from_ver(self, ver):

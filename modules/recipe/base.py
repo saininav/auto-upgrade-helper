@@ -29,8 +29,9 @@ import logging as log
 from logging import debug as D
 from logging import info as I
 from logging import warning as W
+
 from errors import *
-from bitbake import *
+from utils.bitbake import *
 
 class Recipe(object):
     def __init__(self, env, new_ver, interactive, workdir, recipe_dir, bitbake, git):
@@ -539,7 +540,7 @@ class Recipe(object):
         self.bb.unpack(self.env['PN'])
 
     def fetch(self):
-        from gitrecipe import GitRecipe
+        from recipe.git import GitRecipe
 
         def _try_fetch():
             try:
@@ -562,6 +563,7 @@ class Recipe(object):
                 return False
 
         succeed = _try_fetch()
+
         if not succeed and not isinstance(self, GitRecipe):
             for sfx in self.suffixes:
                 I(" Trying new SRC_URI suffix: %s ..." % sfx)
