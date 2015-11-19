@@ -156,7 +156,7 @@ class Updater(object):
         self.opts['machines'] = settings.get('machines',
                 'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
         self.opts['skip_compilation'] = skip_compilation
-        self.opts['buildhistory_enabled'] = self._buildhistory_is_enabled()
+        self.opts['buildhistory'] = self._buildhistory_is_enabled()
 
         self.uh_dir = os.path.join(build_dir, "upgrade-helper")
         if not os.path.exists(self.uh_dir):
@@ -180,22 +180,34 @@ class Updater(object):
     def _buildhistory_is_enabled(self):
         enabled = False
 
-        if 'buildhistory' in self.base_env['INHERIT']:
-            if not 'BUILDHISTORY_COMMIT' in self.base_env:
-                E(" Buildhistory was enabled but need"\
-                        " BUILDHISTORY_COMMIT=1 please set.")
-                exit(1)
+        if settings.get("buildhistory", "no") == "yes":
+            if 'buildhistory' in self.base_env['INHERIT']:
+                if not 'BUILDHISTORY_COMMIT' in self.base_env:
+                    E(" Buildhistory was INHERIT in conf/local.conf"\
+                      " but need BUILDHISTORY_COMMIT=1 please set.")
+                    exit(1)
 
-            if not self.base_env['BUILDHISTORY_COMMIT'] == '1':
-                E(" Buildhistory was enabled but need"\
-                        " BUILDHISTORY_COMMIT=1 please set.")
-                exit(1)
+                if not self.base_env['BUILDHISTORY_COMMIT'] == '1':
+                    E(" Buildhistory was INHERIT in conf/local.conf"\
+                      " but need BUILDHISTORY_COMMIT=1 please set.")
+                    exit(1)
 
-            if self.opts['skip_compilation']:
-                W(" Buildhistory disabled because user" \
-                        " skip compilation!")
+                if self.opts['skip_compilation']:
+                    W(" Buildhistory disabled because user" \
+                            " skip compilation!")
+                else:
+                    enabled = True
             else:
-                enabled = True
+                E(" Buildhistory was enabled in upgrade-helper.conf"\
+                  " but isn't INHERIT in conf/local.conf, if you want"\
+                  " to enable please set.")
+                exit(1)
+        else:
+            if 'buildhistory' in self.base_env['INHERIT']:
+                E(" Buildhistory was INHERIT in conf/local.conf"\
+                  " but buildhistory=yes isn't in upgrade-helper.conf,"\
+                  " if you want to enable please set.")
+                exit(1)
 
         return enabled
 

@@ -85,7 +85,7 @@ def detect_recipe_type(bb, git, opts, pkg_ctx):
             pkg_ctx['recipe_dir'], bb, git)
 
 def buildhistory_init(bb, git, opts, pkg_ctx):
-    if not opts['buildhistory_enabled']:
+    if not opts['buildhistory']:
         return
 
     pkg_ctx['buildhistory'] = BuildHistory(bb, pkg_ctx['PN'],
@@ -118,11 +118,11 @@ def compile(bb, git, opts, pkg_ctx):
     for machine in opts['machines']:
         I(" %s: compiling for %s ..." % (pkg_ctx['PN'], machine))
         pkg_ctx['recipe'].compile(machine)
-        if opts['buildhistory_enabled']:
+        if opts['buildhistory']:
             pkg_ctx['buildhistory'].add()
 
 def buildhistory_diff(bb, git, opts, pkg_ctx):
-    if not opts['buildhistory_enabled']:
+    if not opts['buildhistory']:
         return
 
     I(" %s: Checking buildhistory ..." % pkg_ctx['PN'])

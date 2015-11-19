@@ -58,6 +58,10 @@ drop_previous_commits=yes
 
 # machines to test build with
 machines=qemux86 qemux86-64 qemuarm qemumips qemuppc
+
+# optional features
+buildhistory=no
+
 --------------- snip ---------------
 
 3. Enable distrodata and supply appropriate additional metadata. For
@@ -75,8 +79,9 @@ WARNING: if you are using the default maintainers.inc file supplied
          emails to the default maintainers. Please be careful not to
          do this :)
 
-4. Enable buildhistory by adding the following lines to your
-conf/local.conf file:
+4. If you want to enable buildhistory (optional) you need to enable in
+upgrade-helper.conf also add the following lines to your conf/local.conf
+file:
 
 --------------- snip ---------------
 INHERIT =+ "buildhistory"
