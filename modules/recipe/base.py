@@ -33,6 +33,18 @@ from logging import warning as W
 from errors import *
 from utils.bitbake import *
 
+def is_recipe_or_include_file(full_path_f, f):
+    is_file = os.path.isfile(full_path_f)
+
+    is_recipe = f.find(self.env['PN']) == 0 and \
+                f.find(self.env['PKGV']) != -1 and \
+                f.find(".bb") != -1
+
+    is_include = f.find(self.env['PN']) == 0 and \
+                 f.find(".inc") != -1
+
+    return is_file and (is_recipe or is_include)
+
 class Recipe(object):
     def __init__(self, env, new_ver, interactive, workdir, recipe_dir, bitbake, git):
         self.env = env
@@ -63,6 +75,7 @@ class Recipe(object):
 
         super(Recipe, self).__init__()
 
+
     def update_env(self, env):
         self.env = env
 
@@ -80,10 +93,7 @@ class Recipe(object):
         # change PR before renaming
         for f in os.listdir(self.recipe_dir):
             full_path_f = os.path.join(self.recipe_dir, f)
-            if os.path.isfile(full_path_f) and \
-                    ((f.find(self.env['PN']) == 0 and f.find(self.env['PKGV']) != -1 and
-                      f.find(".bb") != -1) or
-                     (f.find(self.env['PN']) == 0 and f.find(".inc") != -1)):
+            if is_recipe_or_include_file(full_path_f, f):
                 with open(full_path_f + ".tmp", "w+") as temp_recipe:
                     with open(full_path_f) as recipe:
                         for line in recipe:
@@ -130,12 +140,7 @@ class Recipe(object):
 
         for f in os.listdir(self.recipe_dir):
             full_path_f = os.path.join(self.recipe_dir, f)
-            if os.path.isfile(full_path_f) and \
-                    ((f.find(self.env['PN']) == 0 and
-                      f.find(self.env['PKGV']) != -1 and
-                      f.find(".bb") != -1) or
-                     (f.find(self.env['PN']) == 0 and
-                      f.find(".inc") != -1)):
+            if is_recipe_or_include_file(full_path_f, f):
                 with open(full_path_f + ".tmp", "w+") as temp_recipe:
                     with open(full_path_f) as recipe:
                         for line in recipe:
@@ -178,10 +183,7 @@ class Recipe(object):
         # files... Go through the recipes/inc files until we find them
         for f in os.listdir(self.recipe_dir):
             full_path_f = os.path.join(self.recipe_dir, f)
-            if os.path.isfile(full_path_f) and \
-                    ((f.find(self.env['PN']) == 0 and f.find(self.env['PKGV']) != -1 and
-                      f.find(".bb") != -1) or
-                     (f.find(self.env['PN']) == 0 and f.find(".inc") != -1)):
+            if is_recipe_or_include_file(full_path_f, f):
                 with open(full_path_f + ".tmp", "w+") as temp_recipe:
                     with open(full_path_f) as recipe:
                         for line in recipe:
@@ -218,10 +220,7 @@ class Recipe(object):
         # Will change the extension of the archive from the SRC_URI
         for f in os.listdir(self.recipe_dir):
             full_path_f = os.path.join(self.recipe_dir, f)
-            if os.path.isfile(full_path_f) and \
-                    ((f.find(self.env['PN']) == 0 and f.find(self.env['PKGV']) != -1 and
-                      f.find(".bb") != -1) or
-                     (f.find(self.env['PN']) == 0 and f.find(".inc") != -1)):
+            if is_recipe_or_include_file(full_path_f, f):
                 with open(full_path_f + ".tmp", "w+") as temp_recipe:
                     with open(full_path_f) as recipe:
                         source_found = False
