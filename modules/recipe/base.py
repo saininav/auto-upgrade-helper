@@ -57,6 +57,16 @@ def modify_recipe_files(func):
                 os.rename(full_path_f + ".tmp", full_path_f)
     return modify
 
+def read_recipe_files(func):
+    def read(env, recipe_dir):
+        for f in os.listdir(recipe_dir):
+            full_path_f = os.path.join(recipe_dir, f)
+            if is_recipe_or_include_file(env, full_path_f, f):
+                with open(full_path_f) as recipe:
+                    for line in recipe:
+                        func(line)
+    return read
+
 class Recipe(object):
     def __init__(self, env, new_ver, interactive, workdir, recipe_dir, bitbake, git):
         self.env = env
@@ -85,8 +95,23 @@ class Recipe(object):
         self.commit_msg = self.env['PN'] + ": upgrade to " + self.new_ver + "\n\n"
         self.rm_patches_msg = "\n\nRemoved the following patch(es):\n"
 
+        self._inherits = None
+
         super(Recipe, self).__init__()
 
+    def get_inherits(self):
+        @read_recipe_files
+        def _get_inherits(line):
+            m = re.search("^inherit (.*)$", line)
+            if m:
+                tmp = m.group(1).split()
+                self._inherits.extend(tmp)
+
+        if not self._inherits:
+            self._inherits = []
+            _get_inherits(self.env, self.recipe_dir)
+
+        return self._inherits
 
     def update_env(self, env):
         self.env = env
