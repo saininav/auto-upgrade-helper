@@ -157,6 +157,7 @@ class Updater(object):
                 'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
         self.opts['skip_compilation'] = skip_compilation
         self.opts['buildhistory'] = self._buildhistory_is_enabled()
+        self.opts['testimage'] = self._testimage_is_enabled()
 
         self.uh_dir = os.path.join(build_dir, "upgrade-helper")
         if not os.path.exists(self.uh_dir):
@@ -206,6 +207,41 @@ class Updater(object):
             if 'buildhistory' in self.base_env['INHERIT']:
                 E(" Buildhistory was INHERIT in conf/local.conf"\
                   " but buildhistory=yes isn't in upgrade-helper.conf,"\
+                  " if you want to enable please set.")
+                exit(1)
+
+        return enabled
+
+    def _testimage_is_enabled(self):
+        enabled = False
+
+        if settings.get("testimage", "no") == "yes":
+            if 'testimage' in self.base_env['INHERIT']:
+                if not "ptest" in self.base_env["DISTRO_FEATURES"]:
+                    E(" testimage requires ptest in DISTRO_FEATURES please add to"\
+                      " conf/local.conf.")
+                    exit(1)
+
+                if not "package-management" in self.base_env['EXTRA_IMAGE_FEATURES']:
+                    E(" testimage requires package-management in EXTRA_IMAGE_FEATURES"\
+                      " please add to conf/local.conf.")
+                    exit(1)
+
+                if not "package_rpm" == self.base_env["PACKAGE_CLASSES"]:
+                    E(" testimage/ptest requires PACKAGE_CLASSES set to package_rpm"\
+                      " please add to conf/local.conf.")
+                    exit(1)
+
+                enabled = True
+            else:
+                E(" testimage was enabled in upgrade-helper.conf"\
+                  " but isn't INHERIT in conf/local.conf, if you want"\
+                  " to enable please set.")
+                exit(1)
+        else:
+            if 'testimage' in self.base_env['INHERIT']:
+                E(" testimage was INHERIT in conf/local.conf"\
+                  " but testimage=yes isn't in upgrade-helper.conf,"\
                   " if you want to enable please set.")
                 exit(1)
 
@@ -497,10 +533,8 @@ class Updater(object):
                     self.uh_recipes_failed_dir, pkg_ctx['PN']))
 
             self.commit_changes(pkg_ctx)
-
             self.statistics.update(pkg_ctx['PN'], pkg_ctx['NPV'],
                     pkg_ctx['MAINTAINER'], pkg_ctx['error'])
-
             self.pkg_upgrade_handler(pkg_ctx)
 
         if attempted_pkgs > 1:

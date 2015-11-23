@@ -61,6 +61,7 @@ machines=qemux86 qemux86-64 qemuarm qemumips qemuppc
 
 # optional features
 buildhistory=no
+testimage=no
 
 --------------- snip ---------------
 
@@ -90,6 +91,30 @@ BUILDHISTORY_COMMIT" = "1"
 
 If upgrade is succesful buildhistory diff's are generated into
 $BUILDDIR/upgrade-helper/work/recipe/buildhistory-diff.txt.
+
+(Do not remove any other inherited class in the process, e.g. distrodata).
+
+5. If you want to enable testimage (optional) you need to enable in
+upgrade-helper.conf also add the following lines to your conf/local.conf
+file:
+
+--------------- snip ---------------
+INHERIT += "testimage"
+
+EXTRA_IMAGE_FEATURES = "debug-tweaks package-management"
+# testimage/ptest only work with rpm
+PACKAGE_CLASSES = "package_rpm"
+--------------- snip ---------------
+
+Also if you are running in a server without X11 session, you need to start
+a vncserver example:
+
+$ vncserver :1
+$ export DISPLAY=:1
+
+If upgrade is succesful testimage/ptest results are generated into
+$BUILDDIR/upgrade-helper/work/recipe/ptest_recipe.log if recipe support
+ptest.
 
 (Do not remove any other inherited class in the process, e.g. distrodata).
 
