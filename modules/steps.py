@@ -34,6 +34,21 @@ from recipe.base import Recipe
 from recipe.git import GitRecipe
 from recipe.svn import SvnRecipe
 
+def clean_repo(bb, git, opts, pkg_ctx):
+    git.checkout_branch("master")
+
+    try:
+        git.delete_branch("remove_patches")
+    except:
+        pass
+    try:
+        git.delete_branch("upgrades")
+    except:
+        pass
+
+    git.reset_hard()
+    git.create_branch("upgrades")
+
 def load_env(bb, git, opts, pkg_ctx):
     stdout = git.status()
     if stdout != "":
@@ -56,17 +71,6 @@ def load_env(bb, git, opts, pkg_ctx):
 
     if pkg_ctx['env']['PV'] == pkg_ctx['NPV']:
         raise UpgradeNotNeededError
-
-def clean_repo(bb, git, opts, pkg_ctx):
-    try:
-        git.checkout_branch("upgrades")
-    except Error:
-        git.create_branch("upgrades")
-
-    try:
-        git.delete_branch("remove_patches")
-    except:
-        pass
 
 def detect_recipe_type(bb, git, opts, pkg_ctx):
     if pkg_ctx['env']['SRC_URI'].find("ftp://") != -1 or  \
@@ -127,8 +131,8 @@ def buildhistory_diff(bb, git, opts, pkg_ctx):
     pkg_ctx['buildhistory'].diff()
 
 upgrade_steps = [
-    (load_env, "Loading environment ..."),
     (clean_repo, "Cleaning git repository of temporary branch ..."),
+    (load_env, "Loading environment ..."),
     (detect_recipe_type, None),
     (buildhistory_init, None),
     (unpack_original, "Fetch & unpack original version ..."),
