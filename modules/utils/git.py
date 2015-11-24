@@ -61,6 +61,9 @@ class Git(object):
     def create_patch(self, out_dir):
         return self._cmd("format-patch -M10 -1 -o " + out_dir)
 
+    def apply_patch(self, patch_file):
+        return self._cmd("am %s" % patch_file)
+
     def status(self):
         return self._cmd("status --porcelain")
 
