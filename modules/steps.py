@@ -50,14 +50,12 @@ def load_env(bb, git, opts, pkg_ctx):
         git.clean_untracked()
 
     pkg_ctx['env'] = bb.env(pkg_ctx['PN'])
-    if pkg_ctx['env']['PV'] == pkg_ctx['NPV']:
-        raise UpgradeNotNeededError
-
-def load_dirs(bb, git, opts, pkg_ctx):
     pkg_ctx['workdir'] = os.path.join(pkg_ctx['base_dir'], pkg_ctx['PN'])
     os.mkdir(pkg_ctx['workdir'])
-
     pkg_ctx['recipe_dir'] = os.path.dirname(pkg_ctx['env']['FILE'])
+
+    if pkg_ctx['env']['PV'] == pkg_ctx['NPV']:
+        raise UpgradeNotNeededError
 
 def clean_repo(bb, git, opts, pkg_ctx):
     try:
@@ -130,7 +128,6 @@ def buildhistory_diff(bb, git, opts, pkg_ctx):
 
 upgrade_steps = [
     (load_env, "Loading environment ..."),
-    (load_dirs, None),
     (clean_repo, "Cleaning git repository of temporary branch ..."),
     (detect_recipe_type, None),
     (buildhistory_init, None),
