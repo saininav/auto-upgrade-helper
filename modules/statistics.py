@@ -99,8 +99,14 @@ class Statistics(object):
 
         return stat_msg
 
-    def get_summary(self):
-        msg = self._pkg_stats()
+    def get_summary(self, publish_work_url, workdir):
+        msg = ''
+
+        if publish_work_url:
+            msg += "AUH finished upgrade batch the result patches/logs can be found at:\n" \
+                   "%s/%s, next are the statistics:\n\n" % (publish_work_url, workdir)
+
+        msg += self._pkg_stats()
         msg += self._maintainer_stats()
 
         return msg

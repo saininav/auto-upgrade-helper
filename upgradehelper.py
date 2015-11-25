@@ -393,7 +393,7 @@ class Updater(object):
             I(" %s: %s" % (pkg_ctx['PN'], e.stdout))
             raise e
 
-    def send_status_mail(self):
+    def send_status_mail(self, statistics_summary):
         if "status_recipients" not in settings:
             E(" Could not send status email, no recipients set!")
             return -1
@@ -402,10 +402,8 @@ class Updater(object):
 
         subject = "[AUH] Upgrade status: " + date.isoformat(date.today())
 
-        msg = self.statistics.get_summary()
-
         if self.statistics.total_attempted:
-            self.email_handler.send_email(to_list, subject, msg)
+            self.email_handler.send_email(to_list, subject, statistics_summary)
         else:
             W("No recipes attempted, not sending status mail!")
 
@@ -611,7 +609,9 @@ class Updater(object):
             self.pkg_upgrade_handler(pkg_ctx)
 
         if attempted_pkgs > 0:
-            statistics_summary = self.statistics.get_summary()
+            statistics_summary = self.statistics.get_summary(
+                    settings.get('publish_work_url', 'no'),
+                    os.path.basename(self.uh_work_dir))
 
             statistics_file = os.path.join(self.uh_work_dir,
                     "statistics_summary")
@@ -621,7 +621,7 @@ class Updater(object):
             I(" %s" % statistics_summary)
 
             if self.opts['send_email']:
-                self.send_status_mail()
+                self.send_status_mail(statistics_summary)
 
 class UniverseUpdater(Updater):
     def __init__(self):

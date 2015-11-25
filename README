@@ -50,6 +50,9 @@ status_recipients=john.doe@doe.com
 # specify the directory where work (patches) will be saved (optional)
 #workdir=
 
+# publish url to use in statistics summary (optional)
+#publish_work_url=http://auh.somehost.com/work
+
 # clean sstate directory before upgrading
 clean_sstate=yes
 
