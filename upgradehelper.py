@@ -738,12 +738,12 @@ class UniverseUpdater(Updater):
                     date.toordinal(date.today()) - \
                     date.toordinal(datetime.strptime(self.history[pn][2], '%Y-%m-%d'))
                 # retry recipes that had fetch errors or other errors after
-                # more than 7 days
+                # more than 30 days
                 if (self.history[pn][3] == str(FetchError()) or
-                        self.history[pn][3] == str(Error())) and retry_delta > 7:
+                        self.history[pn][3] == str(Error())) and retry_delta > 30:
                     return True
 
-                D(" Skipping upgrade of %s: is in history and not 7 days passed" % pn)
+                D(" Skipping upgrade of %s: is in history and not 30 days passed" % pn)
                 return False
 
         # drop native/cross/cross-canadian recipes. We deal with native
