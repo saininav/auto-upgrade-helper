@@ -395,14 +395,14 @@ class Updater(object):
 
     def send_status_mail(self):
         if "status_recipients" not in settings:
-            E("Could not send status email, no recipients set!")
+            E(" Could not send status email, no recipients set!")
             return -1
 
         to_list = settings["status_recipients"].split()
 
         subject = "[AUH] Upgrade status: " + date.isoformat(date.today())
 
-        msg = self.statistics.pkg_stats() + self.statistics.maintainer_stats()
+        msg = self.statistics.get_summary()
 
         if self.statistics.total_attempted:
             self.email_handler.send_email(to_list, subject, msg)
@@ -610,16 +610,15 @@ class Updater(object):
             pkg_ctx = pkgs_ctx[pn]
             self.pkg_upgrade_handler(pkg_ctx)
 
-        if attempted_pkgs > 1:
-            statistics_summary = self.statistics.pkg_stats() + \
-                    self.statistics.maintainer_stats()
+        if attempted_pkgs > 0:
+            statistics_summary = self.statistics.get_summary()
 
             statistics_file = os.path.join(self.uh_work_dir,
                     "statistics_summary")
             with open(statistics_file, "w+") as f:
                 f.write(statistics_summary)
 
-            I("%s" % statistics_summary)
+            I(" %s" % statistics_summary)
 
             if self.opts['send_email']:
                 self.send_status_mail()

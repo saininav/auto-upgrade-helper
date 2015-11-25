@@ -62,16 +62,15 @@ class Statistics(object):
 
         self.total_attempted += 1
 
-    def pkg_stats(self):
-        stat_msg = "\nUpgrade statistics:\n"
-        stat_msg += "====================================================\n"
+    def _pkg_stats(self):
+        stat_msg = "Recipe upgrade statistics:\n\n"
         for status in self.upgrade_stats:
             list_len = len(self.upgrade_stats[status])
             if list_len > 0:
-                stat_msg += "* " + status + ": " + str(list_len) + "\n"
+                stat_msg += "    * " + status + ": " + str(list_len) + "\n"
 
                 for pkg, new_ver, maintainer in self.upgrade_stats[status]:
-                    stat_msg += "    " + pkg + ", " + new_ver + ", " + \
+                    stat_msg += "        " + pkg + ", " + new_ver + ", " + \
                                 maintainer + "\n"
 
         if self.total_attempted == 0:
@@ -80,8 +79,7 @@ class Statistics(object):
         else:
             percent_succeded = self.succeeded["total"] * 100.0 / self.total_attempted
             percent_failed = self.failed["total"] * 100.0 / self.total_attempted
-        stat_msg += "++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-        stat_msg += "TOTAL: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
+        stat_msg += "\n    TOTAL: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
                     (self.total_attempted, self.succeeded["total"],
                     percent_succeded,
                     self.failed["total"],
@@ -89,14 +87,20 @@ class Statistics(object):
 
         return stat_msg
 
-    def maintainer_stats(self):
-        stat_msg = "* Statistics per maintainer:\n"
+    def _maintainer_stats(self):
+        stat_msg = "Recipe upgrade statistics per Maintainer:\n\n"
         for m in self.maintainers:
             attempted = self.succeeded[m] + self.failed[m]
-            stat_msg += "    %s: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n\n" % \
+            stat_msg += "    %s: attempted=%d succeeded=%d(%.2f%%) failed=%d(%.2f%%)\n" % \
                         (m.split("@")[0], attempted, self.succeeded[m],
                         self.succeeded[m] * 100.0 / attempted,
                         self.failed[m],
                         self.failed[m] * 100.0 / attempted)
 
         return stat_msg
+
+    def get_summary(self):
+        msg = self._pkg_stats()
+        msg += self._maintainer_stats()
+
+        return msg
