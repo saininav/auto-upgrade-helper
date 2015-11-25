@@ -1,0 +1,185 @@
+#!/usr/bin/env python
+# vim: set ts=4 sw=4 et:
+#
+# Copyright (c) 2015 Intel Corporation
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#
+# This module implements logic for run image tests on recipes when upgrade
+# process succeed.
+#
+
+import os
+import sys
+import shutil
+
+import logging as log
+from logging import debug as D
+from logging import info as I
+from logging import warning as W
+from logging import error as E
+from logging import critical as C
+
+from errors import *
+from utils.bitbake import *
+
+class TestImage():
+    def __init__(self, bb, git, uh_work_dir, pkgs_ctx):
+        self.bb = bb
+        self.git = git
+        self.uh_work_dir = uh_work_dir
+        self.pkgs_ctx = pkgs_ctx
+
+        os.environ['BB_ENV_EXTRAWHITE'] = os.environ['BB_ENV_EXTRAWHITE'] + \
+            " TEST_SUITES CORE_IMAGE_EXTRA_INSTALL"
+
+    def _get_ptest_pkgs(self):
+        pkgs = []
+
+        for c in self.pkgs_ctx:
+            if "ptest" in c['recipe'].get_inherits():
+                pkgs.append(c)
+
+        return pkgs
+
+    def _get_pkgs_to_install(self, pkgs, ptest=False):
+        pkgs_out = []
+
+        # for provide access to the target
+        if ptest:
+            pkgs_out.append("dropbear")
+
+        for c in pkgs:
+            pkgs_out.append(c['PN'])
+            if ptest:
+                pkgs_out.append("%s-ptest" % c['PN'])
+
+        return ' '.join(pkgs_out)
+
+    def prepare_branch(self):
+        self.git.checkout_branch("master")
+        try:
+            self.git.delete_branch("testimage")
+            self.git.delete_branch("upgrades")
+        except Error:
+            pass
+        self.git.reset_hard()
+
+        self.git.create_branch("testimage")
+        for c in self.pkgs_ctx:
+            patch_file = os.path.join(c['workdir'], c['patch_file'])
+            self.git.apply_patch(patch_file)
+
+    def _parse_ptest_log(self, log_file):
+        ptest_results = {}
+
+        with open(log_file, "r") as f:
+            pn = None
+            processing = False
+
+            for line in f:
+                if not processing:
+                    m = re.search("^BEGIN: /usr/lib/(.*)/ptest$", line)
+                    if m:
+                        pn = m.group(1)
+                        ptest_results[pn] = []
+                        processing = True
+                else:
+                    m = re.search("^END: $", line)
+                    if m:
+                        pn = None
+                        processing = False
+                    else:
+                        ptest_results[pn].append(line)
+
+        return ptest_results
+
+    def _find_log(self, name, machine):
+        result = []
+
+        base_dir = os.path.join(os.getenv('BUILDDIR'), 'tmp', 'work')
+        for root, dirs, files in os.walk(base_dir):
+            if name in files:
+                result.append(os.path.join(root, name))
+
+        for ptest_log in result:
+            if machine in ptest_log:
+                return ptest_log
+
+    def ptest(self, machine):
+        ptest_pkgs = self._get_ptest_pkgs()
+
+        os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
+            self._get_pkgs_to_install(ptest_pkgs, True)
+        I( "   building core-image-minimal for %s ..." % machine)
+        self.bb.complete("core-image-minimal", machine)
+
+        os.environ['TEST_SUITES'] = "ping ssh _ptest"
+        I( "   running core-image-minimal/ptest for %s ..." % machine)
+        self.bb.complete("core-image-minimal -c testimage", machine)
+
+        ptest_log_file = self._find_log("ptest.log", machine)
+        shutil.copyfile(ptest_log_file,
+                os.path.join(self.uh_work_dir, "ptest_%s.log" % machine))
+
+        ptest_result = self._parse_ptest_log(ptest_log_file)
+        for pn in ptest_result:
+            for pkg_ctx in self.pkgs_ctx:
+                if not pn == pkg_ctx['PN']:
+                    continue 
+
+                if not 'ptest' in pkg_ctx:
+                    pkg_ctx['ptest'] = {}
+                if not 'ptest_log' in pkg_ctx:
+                    pkg_ctx['ptest_log'] = os.path.join(pkg_ctx['workdir'],
+                        "ptest.log")
+
+                pkg_ctx['ptest'][machine] = True
+                with open(pkg_ctx['ptest_log'], "a+") as f:
+                    f.write("BEGIN: PTEST for %s\n" % machine)
+                    for line in ptest_result[pn]:
+                        f.write(line)
+                    f.write("END: PTEST for %s\n" % machine)
+
+    def sato(self, machine):
+        os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
+            self._get_pkgs_to_install(self.pkgs_ctx)
+
+        if 'TEST_SUITES' in os.environ:
+            del os.environ['TEST_SUITES']
+
+        I( "   building core-image-sato for %s ..." % machine)
+        self.bb.complete("core-image-sato", machine)
+
+        I( "   running core-image-sato/testimage for %s ..." % machine)
+        self.bb.complete("core-image-sato -c testimage", machine)
+
+        log_file = self._find_log("log.do_testimage", machine)
+        shutil.copyfile(log_file,
+                os.path.join(self.uh_work_dir, "log_%s.do_testimage" % machine))
+        for pkg_ctx in self.pkgs_ctx:
+            if not 'testimage' in pkg_ctx:
+                pkg_ctx['testimage'] = {}
+            if not 'testimage_log' in pkg_ctx:
+                pkg_ctx['testimage_log'] = os.path.join(
+                    pkg_ctx['workdir'], "log.do_testimage")
+
+            pkg_ctx['testimage'][machine] = True
+            with open(log_file, "r") as lf:
+                with open(pkg_ctx['testimage_log'], "a+") as of:
+                    of.write("BEGIN: TESTIMAGE for %s\n" % machine)
+                    for line in lf:
+                        of.write(line)
+                    of.write("END: TESTIMAGE for %s\n" % machine)

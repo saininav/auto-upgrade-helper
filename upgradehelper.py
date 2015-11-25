@@ -56,6 +56,7 @@ from utils.emailhandler import Email
 
 from statistics import Statistics
 from steps import upgrade_steps
+from testimage import TestImage
 
 help_text = """Usage examples:
 * To upgrade xmodmap recipe to the latest available version, interactively:
@@ -296,6 +297,14 @@ class Updater(object):
             "    - amend the patch and sign it off: git commit -s --reset-author --amend\n" \
             "    - send it to the list\n\n" \
 
+        testimage_ptest_info = \
+            "The recipe has ptest enabled and has been tested with core-image-minimal/ptest \n" \
+            "with the next machines %s. Attached is the log file.\n\n"
+
+        testimage_sato_info = \
+            "The recipe has been tested using core-image-sato testimage and succeeded with \n" \
+            "the next machines %s. Attached is the log file.\n\n" \
+
         mail_footer = \
             "Attached are the patch, license diff (if change) and bitbake log.\n" \
             "Any problem please contact Anibal Limon <anibal.limon@intel.com>.\n\n" \
@@ -317,12 +326,21 @@ class Updater(object):
             subject += " FAILED"
         msg_body = mail_header % (pkg_ctx['PN'], pkg_ctx['NPV'],
                 self._get_status_msg(pkg_ctx['error']))
-        license_diff_fn = pkg_ctx['recipe'].get_license_diff_file_name()
-        if license_diff_fn:
-            msg_body += license_change_info % license_diff_fn
+        if 'recipe' in pkg_ctx:
+            license_diff_fn = pkg_ctx['recipe'].get_license_diff_file_name()
+            if license_diff_fn:
+                msg_body += license_change_info % license_diff_fn
         if not pkg_ctx['error']:
             msg_body += next_steps_info % (', '.join(self.opts['machines']),
                     os.path.basename(pkg_ctx['patch_file']))
+
+        if self.opts['testimage']:
+            if 'ptest' in pkg_ctx:
+                machines = pkg_ctx['ptest'].keys()
+                msg_body += testimage_ptest_info % machines
+            if 'testimage' in pkg_ctx:
+                machines = pkg_ctx['testimage'].keys()
+                msg_body += testimage_sato_info % machines
 
         msg_body += mail_footer
 
@@ -336,7 +354,6 @@ class Updater(object):
         # Only send email to Maintainer when recipe upgrade succeed.
         if self.opts['send_email'] and not pkg_ctx['error']:
             self.email_handler.send_email(to_addr, subject, msg_body, attachments, cc_addr=cc_addr)
-
         # Preserve email for review purposes.
         email_file = os.path.join(pkg_ctx['workdir'],
                     "email_summary")
@@ -355,7 +372,7 @@ class Updater(object):
         try:
             pkg_ctx['patch_file'] = None
 
-            if pkg_ctx['recipe']:
+            if 'recipe' in pkg_ctx:
                 I(" %s: Auto commit changes ..." % pkg_ctx['PN'])
                 self.git.commit(pkg_ctx['recipe'].commit_msg, self.opts['author'])
 
@@ -471,7 +488,16 @@ class Updater(object):
         I(" Building gcc runtimes ...")
         for machine in self.opts['machines']:
             I("  building gcc runtime for %s" % machine)
-            self.bb.complete("gcc-runtime", machine)
+            try:
+                self.bb.complete("gcc-runtime", machine)
+            except Exception as e:
+                E(" Can't build gcc-runtime for %s." % machine)
+
+                if isinstance(e, Error):
+                    E(e.stdout)
+                else:
+                    import traceback
+                    traceback.print_exc(file=sys.stdout)
 
         pkgs_to_upgrade = self._order_pkgs_to_upgrade(
                 self._get_packages_to_upgrade(package_list))
@@ -491,6 +517,8 @@ class Updater(object):
             pkgs_ctx[p]['base_dir'] = self.uh_recipes_all_dir
         I(" ############################################################")
 
+        succeeded_pkgs_ctx = []
+        failed_pkgs_ctx = []
         attempted_pkgs = 0
         for pn, _, _ in pkgs_to_upgrade:
             pkg_ctx = pkgs_ctx[pn]
@@ -505,6 +533,7 @@ class Updater(object):
                         I(" %s: %s" % (pkg_ctx['PN'], msg))
                     step(self.bb, self.git, self.opts, pkg_ctx)
 
+                succeeded_pkgs_ctx.append(pkg_ctx)
                 os.symlink(pkg_ctx['workdir'], os.path.join( \
                     self.uh_recipes_succeed_dir, pkg_ctx['PN']))
 
@@ -529,12 +558,53 @@ class Updater(object):
 
                 pkg_ctx['error'] = e
 
+                failed_pkgs_ctx.append(pkg_ctx)
                 os.symlink(pkg_ctx['workdir'], os.path.join( \
                     self.uh_recipes_failed_dir, pkg_ctx['PN']))
 
             self.commit_changes(pkg_ctx)
             self.statistics.update(pkg_ctx['PN'], pkg_ctx['NPV'],
                     pkg_ctx['MAINTAINER'], pkg_ctx['error'])
+
+        if self.opts['testimage']:
+            if len(succeeded_pkgs_ctx) > 0:
+                tim = TestImage(self.bb, self.git, self.uh_work_dir, succeeded_pkgs_ctx)
+
+                try:
+                    tim.prepare_branch()
+                except Exception as e:
+                    E(" testimage: Failed to prepare branch.")
+                    if isinstance(e, Error):
+                        E(" %s" % e.stdout)
+                    exit(1)
+
+                I(" Images will test for %s." % ', '.join(self.opts['machines']))
+                for machine in self.opts['machines']:
+                    I("  Testing images for %s ..." % machine)
+                    try:
+                        tim.ptest(machine)
+                    except Exception as e:
+                        E(" core-image-minimal/ptest on machine %s failed" % machine)
+                        if isinstance(e, Error):
+                            E(" %s" % e.stdout)
+                        else:
+                            import traceback
+                            traceback.print_exc(file=sys.stdout)
+
+                    try:
+                        tim.sato(machine)
+                    except Exception as e:
+                        E(" core-image-sato/testimage on machine %s failed" % machine)
+                        if isinstance(e, Error):
+                            E(" %s" % e.stdout)
+                        else:
+                            import traceback
+                            traceback.print_exc(file=sys.stdout)
+            else:
+                I(" Testimage was enabled but any upgrade was successful.")
+
+        for pn in pkgs_ctx.keys():
+            pkg_ctx = pkgs_ctx[pn]
             self.pkg_upgrade_handler(pkg_ctx)
 
         if attempted_pkgs > 1:
