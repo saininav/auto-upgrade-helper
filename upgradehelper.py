@@ -163,7 +163,10 @@ class Updater(object):
         self.uh_dir = os.path.join(build_dir, "upgrade-helper")
         if not os.path.exists(self.uh_dir):
             os.mkdir(self.uh_dir)
-        self.uh_work_dir = os.path.join(self.uh_dir, "work-%s" % \
+        uh_base_work_dir = settings.get('workdir', '')
+        if not uh_base_work_dir:
+            uh_base_work_dir = self.uh_dir
+        self.uh_work_dir = os.path.join(uh_base_work_dir, "%s" % \
                 datetime.now().strftime("%Y%m%d%H%M%S"))
         os.mkdir(self.uh_work_dir)
         self.uh_recipes_all_dir = os.path.join(self.uh_work_dir, "all")

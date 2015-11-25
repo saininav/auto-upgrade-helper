@@ -47,6 +47,9 @@ from=upgrade.helper@my-server.com
 # who should get the status mail with statistics, at the end
 status_recipients=john.doe@doe.com
 
+# specify the directory where work (patches) will be saved (optional)
+#workdir=
+
 # clean sstate directory before upgrading
 clean_sstate=yes
 
