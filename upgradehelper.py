@@ -134,6 +134,10 @@ class Updater(object):
     def __init__(self, auto_mode=False, send_email=False, skip_compilation=False):
         build_dir = get_build_dir()
 
+        self._make_dirs(build_dir)
+
+        self._add_file_logger()
+
         self.bb = Bitbake(build_dir)
 
         try:
@@ -160,6 +164,7 @@ class Updater(object):
         self.opts['buildhistory'] = self._buildhistory_is_enabled()
         self.opts['testimage'] = self._testimage_is_enabled()
 
+    def _make_dirs(self, build_dir):
         self.uh_dir = os.path.join(build_dir, "upgrade-helper")
         if not os.path.exists(self.uh_dir):
             os.mkdir(self.uh_dir)
@@ -175,6 +180,11 @@ class Updater(object):
         os.mkdir(self.uh_recipes_succeed_dir)
         self.uh_recipes_failed_dir = os.path.join(self.uh_work_dir, "failed")
         os.mkdir(self.uh_recipes_failed_dir)
+
+    def _add_file_logger(self):
+        fh = log.FileHandler(os.path.join(self.uh_work_dir, "upgrade-helper.log"))
+        logger = log.getLogger()
+        logger.addHandler(fh)
 
     def _get_status_msg(self, err):
         if err:
