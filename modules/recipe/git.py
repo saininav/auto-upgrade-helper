@@ -23,6 +23,7 @@
 #
 
 from recipe.base import Recipe
+import re
 
 class GitRecipe(Recipe):
     def _extract_tag_from_ver(self, ver):
