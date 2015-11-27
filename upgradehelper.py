@@ -68,6 +68,7 @@ help_text = """Usage examples:
     $ upgrade-helper.py all
 """
 
+DEFAULT_TESTIMAGE = 'core-image-sato'
 
 def parse_cmdline():
     parser = argparse.ArgumentParser(description='Package Upgrade Helper',
@@ -314,8 +315,8 @@ class Updater(object):
             "The recipe has ptest enabled and has been tested with core-image-minimal/ptest \n" \
             "with the next machines %s. Attached is the log file.\n\n"
 
-        testimage_sato_info = \
-            "The recipe has been tested using core-image-sato testimage and succeeded with \n" \
+        testimage_info = \
+            "The recipe has been tested using %s testimage and succeeded with \n" \
             "the next machines %s. Attached is the log file.\n\n" \
 
         mail_footer = \
@@ -353,7 +354,8 @@ class Updater(object):
                 msg_body += testimage_ptest_info % machines
             if 'testimage' in pkg_ctx:
                 machines = pkg_ctx['testimage'].keys()
-                msg_body += testimage_sato_info % machines
+                msg_body += testimage_info % (settings.get('testimage_name', \
+                    DEFAULT_TESTIMAGE), machines)
 
         msg_body += mail_footer
 
@@ -602,10 +604,11 @@ class Updater(object):
                             import traceback
                             traceback.print_exc(file=sys.stdout)
 
+                    image = settings.get('testimage_name', DEFAULT_TESTIMAGE)
                     try:
-                        tim.sato(machine)
+                        tim.testimage(machine, image)
                     except Exception as e:
-                        E(" core-image-sato/testimage on machine %s failed" % machine)
+                        E(" %s/testimage on machine %s failed" % (image, machine))
                         if isinstance(e, Error):
                             E(" %s" % e.stdout)
                         else:

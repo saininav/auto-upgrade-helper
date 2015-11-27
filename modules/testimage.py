@@ -153,18 +153,18 @@ class TestImage():
                         f.write(line)
                     f.write("END: PTEST for %s\n" % machine)
 
-    def sato(self, machine):
+    def testimage(self, machine, image):
         os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
             self._get_pkgs_to_install(self.pkgs_ctx)
 
         if 'TEST_SUITES' in os.environ:
             del os.environ['TEST_SUITES']
 
-        I( "   building core-image-sato for %s ..." % machine)
-        self.bb.complete("core-image-sato", machine)
+        I( "   building %s for %s ..." % (image, machine))
+        self.bb.complete(image, machine)
 
-        I( "   running core-image-sato/testimage for %s ..." % machine)
-        self.bb.complete("core-image-sato -c testimage", machine)
+        I( "   running %s/testimage for %s ..." % (image, machine))
+        self.bb.complete("%s -c testimage" % image, machine)
 
         log_file = self._find_log("log.do_testimage", machine)
         shutil.copyfile(log_file,

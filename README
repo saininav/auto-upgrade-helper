@@ -68,6 +68,7 @@ machines=qemux86 qemux86-64 qemuarm qemumips qemuppc
 # optional features
 buildhistory=no
 testimage=no
+testimage_name=image-custom # defaults to core-image-sato
 
 --------------- snip ---------------
 
