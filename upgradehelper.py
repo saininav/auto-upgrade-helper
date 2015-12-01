@@ -276,26 +276,6 @@ class Updater(object):
 
     # this function will be called at the end of each recipe upgrade
     def pkg_upgrade_handler(self, pkg_ctx):
-        if self.opts['interactive'] and pkg_ctx['error'] and pkg_ctx['patch_file']:
-            answer = "N"
-            I(" %s: Do you want to keep the changes? (y/N)" % pkg_ctx['PN'])
-            answer = sys.stdin.readline().strip().upper()
-
-            if answer == '' or answer == 'N':
-                I(" %s: Dropping changes from git ..." % pkg_ctx['PN'])
-                self.git.reset_hard(1)
-                self.git.clean_untracked()
-                return
-
-        # drop last upgrade from git. It's safer this way if the upgrade has
-        # problems and other recipes depend on it. Give the other recipes a
-        # chance...
-        if (settings.get("drop_previous_commits", "no") == "yes" and
-                not pkg_ctx['error']) or (pkg_ctx['error'] and pkg_ctx['patch_file']):
-            I(" %s: Dropping changes from git ..." % pkg_ctx['PN'])
-            self.git.reset_hard(1)
-            self.git.clean_untracked()
-
         mail_header = \
             "Hello,\n\nYou are receiving this email because you are the maintainer\n" \
             "of *%s* recipe and this is to let you know that the automatic attempt\n" \
