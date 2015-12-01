@@ -60,11 +60,10 @@ class TestImage():
         # for provide access to the target
         if ptest:
             pkgs_out.append("dropbear")
+            pkgs_out.append("ptest-runner")
 
         for c in pkgs:
             pkgs_out.append(c['PN'])
-            if ptest:
-                pkgs_out.append("%s-ptest" % c['PN'])
 
         return ' '.join(pkgs_out)
 
@@ -122,7 +121,7 @@ class TestImage():
         ptest_pkgs = self._get_ptest_pkgs()
 
         os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
-            self._get_pkgs_to_install(ptest_pkgs, True)
+            self._get_pkgs_to_install(ptest_pkgs, ptest=True)
         I( "   building core-image-minimal for %s ..." % machine)
         self.bb.complete("core-image-minimal", machine)
 

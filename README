@@ -108,7 +108,8 @@ file:
 --------------- snip ---------------
 INHERIT += "testimage"
 
-EXTRA_IMAGE_FEATURES = "debug-tweaks package-management"
+DISTRO_FEATURES_append = " ptest"
+EXTRA_IMAGE_FEATURES = "debug-tweaks package-management ptest-pkgs"
 # testimage/ptest only work with rpm
 PACKAGE_CLASSES = "package_rpm"
 --------------- snip ---------------
