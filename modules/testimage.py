@@ -35,20 +35,25 @@ from logging import critical as C
 from errors import *
 from utils.bitbake import *
 
+def _pn_in_pkgs_ctx(pn, pkgs_ctx):
+    for c in pkgs_ctx:
+        if pn == c['PN']:
+            return c
+    return None
+
 class TestImage():
-    def __init__(self, bb, git, uh_work_dir, pkgs_ctx):
+    def __init__(self, bb, git, uh_work_dir):
         self.bb = bb
         self.git = git
         self.uh_work_dir = uh_work_dir
-        self.pkgs_ctx = pkgs_ctx
 
         os.environ['BB_ENV_EXTRAWHITE'] = os.environ['BB_ENV_EXTRAWHITE'] + \
             " TEST_SUITES CORE_IMAGE_EXTRA_INSTALL"
 
-    def _get_ptest_pkgs(self):
+    def _get_ptest_pkgs(self, pkgs_ctx):
         pkgs = []
 
-        for c in self.pkgs_ctx:
+        for c in pkgs_ctx:
             if "ptest" in c['recipe'].get_inherits():
                 pkgs.append(c)
 
@@ -67,7 +72,7 @@ class TestImage():
 
         return ' '.join(pkgs_out)
 
-    def prepare_branch(self):
+    def prepare_branch(self, pkgs_ctx):
         self.git.checkout_branch("master")
         try:
             self.git.delete_branch("testimage")
@@ -77,7 +82,7 @@ class TestImage():
         self.git.reset_hard()
 
         self.git.create_branch("testimage")
-        for c in self.pkgs_ctx:
+        for c in pkgs_ctx:
             patch_file = os.path.join(c['workdir'], c['patch_file'])
             self.git.apply_patch(patch_file)
 
@@ -117,13 +122,46 @@ class TestImage():
             if machine in ptest_log:
                 return ptest_log
 
-    def ptest(self, machine):
-        ptest_pkgs = self._get_ptest_pkgs()
+    def _get_failed_recipe(self, log):
+        pn = None
+
+        for line in log.splitlines():
+            m = re.match("ERROR: Logfile of failure stored in: " \
+                "(.*/([^/]*)/[^/]*/temp/log\.(.*)\.[0-9]*)", line)
+            if m:
+                pn = m.group(2)
+
+        return pn
+
+    def _handle_image_build_error(self, pkgs_ctx, e):
+        pn = self._get_failed_recipe(e.stdout)
+        if pn:
+            pkg_ctx = _pn_in_pkgs_ctx(pn, pkgs_ctx)
+            if pkg_ctx:
+                raise IntegrationError(e.stdout, pkg_ctx)
+            else:
+                pn_env = self.bb.env(pn)
+
+                depends = pn_env['DEPENDS'].split()
+                rdepends = pn_env['RDEPENDS'].split()
+                deps = depends + rdepends
+
+                for d in deps:
+                    pkg_ctx = _pn_in_pkgs_ctx(d, pkgs_ctx)
+                    if pkg_ctx:
+                        raise IntegrationError(e.stdout, pkg_ctx)
+        raise e
+
+    def ptest(self, pkgs_ctx, machine):
+        ptest_pkgs = self._get_ptest_pkgs(pkgs_ctx)
 
         os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
             self._get_pkgs_to_install(ptest_pkgs, ptest=True)
         I( "   building core-image-minimal for %s ..." % machine)
-        self.bb.complete("core-image-minimal", machine)
+        try:
+            self.bb.complete("core-image-minimal", machine)
+        except Error as e:
+            self._handle_image_build_error(pkgs_ctx, e)
 
         os.environ['TEST_SUITES'] = "ping ssh _ptest"
         I( "   running core-image-minimal/ptest for %s ..." % machine)
@@ -135,7 +173,7 @@ class TestImage():
 
         ptest_result = self._parse_ptest_log(ptest_log_file)
         for pn in ptest_result:
-            for pkg_ctx in self.pkgs_ctx:
+            for pkg_ctx in pkgs_ctx:
                 if not pn == pkg_ctx['PN']:
                     continue 
 
@@ -152,15 +190,18 @@ class TestImage():
                         f.write(line)
                     f.write("END: PTEST for %s\n" % machine)
 
-    def testimage(self, machine, image):
+    def testimage(self, pkgs_ctx, machine, image):
         os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
-            self._get_pkgs_to_install(self.pkgs_ctx)
+            self._get_pkgs_to_install(pkgs_ctx)
 
         if 'TEST_SUITES' in os.environ:
             del os.environ['TEST_SUITES']
 
         I( "   building %s for %s ..." % (image, machine))
-        self.bb.complete(image, machine)
+        try:
+            self.bb.complete(image, machine)
+        except Error as e:
+            self._handle_image_build_error(pkgs_ctx, e)
 
         I( "   running %s/testimage for %s ..." % (image, machine))
         self.bb.complete("%s -c testimage" % image, machine)
@@ -168,7 +209,7 @@ class TestImage():
         log_file = self._find_log("log.do_testimage", machine)
         shutil.copyfile(log_file,
                 os.path.join(self.uh_work_dir, "log_%s.do_testimage" % machine))
-        for pkg_ctx in self.pkgs_ctx:
+        for pkg_ctx in pkgs_ctx:
             if not 'testimage' in pkg_ctx:
                 pkg_ctx['testimage'] = {}
             if not 'testimage_log' in pkg_ctx:

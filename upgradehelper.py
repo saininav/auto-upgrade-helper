@@ -550,10 +550,7 @@ class Updater(object):
                     if msg is not None:
                         I(" %s: %s" % (pkg_ctx['PN'], msg))
                     step(self.bb, self.git, self.opts, pkg_ctx)
-
                 succeeded_pkgs_ctx.append(pkg_ctx)
-                os.symlink(pkg_ctx['workdir'], os.path.join( \
-                    self.uh_recipes_succeed_dir, pkg_ctx['PN']))
 
                 I(" %s: Upgrade SUCCESSFUL! Please test!" % pkg_ctx['PN'])
             except Exception as e:
@@ -575,21 +572,16 @@ class Updater(object):
                             % (pkg_ctx['PN'], pkg_ctx['workdir']))
 
                 pkg_ctx['error'] = e
-
                 failed_pkgs_ctx.append(pkg_ctx)
-                os.symlink(pkg_ctx['workdir'], os.path.join( \
-                    self.uh_recipes_failed_dir, pkg_ctx['PN']))
 
             self.commit_changes(pkg_ctx)
-            self.statistics.update(pkg_ctx['PN'], pkg_ctx['NPV'],
-                    pkg_ctx['MAINTAINER'], pkg_ctx['error'])
 
         if self.opts['testimage']:
             if len(succeeded_pkgs_ctx) > 0:
-                tim = TestImage(self.bb, self.git, self.uh_work_dir, succeeded_pkgs_ctx)
+                tim = TestImage(self.bb, self.git, self.uh_work_dir)
 
                 try:
-                    tim.prepare_branch()
+                    tim.prepare_branch(succeeded_pkgs_ctx)
                 except Exception as e:
                     E(" testimage: Failed to prepare branch.")
                     if isinstance(e, Error):
@@ -599,31 +591,72 @@ class Updater(object):
                 I(" Images will test for %s." % ', '.join(self.opts['machines']))
                 for machine in self.opts['machines']:
                     I("  Testing images for %s ..." % machine)
-                    try:
-                        tim.ptest(machine)
-                    except Exception as e:
-                        E(" core-image-minimal/ptest on machine %s failed" % machine)
-                        if isinstance(e, Error):
-                            E(" %s" % e.stdout)
-                        else:
-                            import traceback
-                            traceback.print_exc(file=sys.stdout)
+                    while True:
+                        try:
+                            tim.ptest(succeeded_pkgs_ctx, machine)
+                            break
+                        except IntegrationError as e:
+                            E("   %s on machine %s failed in integration, removing..." 
+                                % (pkg_ctx['PN'], machine))
+
+                            with open(os.path.join(pkg_ctx['workdir'],
+                                'integration_error.log'), 'w+') as f:
+                                f.write(e.stdout)
+
+                            pkg_ctx['error'] = e
+                            failed_pkgs_ctx.append(pkg_ctx)
+                            succeeded_pkgs_ctx.remove(pkg_ctx)
+                            tim.prepare_branch(succeeded_pkgs_ctx)
+                        except Exception as e:
+                            E(" core-image-minimal/ptest on machine %s failed" % machine)
+                            if isinstance(e, Error):
+                                E(" %s" % e.stdout)
+                            else:
+                                import traceback
+                                traceback.print_exc(file=sys.stdout)
+
+                            break
 
                     image = settings.get('testimage_name', DEFAULT_TESTIMAGE)
-                    try:
-                        tim.testimage(machine, image)
-                    except Exception as e:
-                        E(" %s/testimage on machine %s failed" % (image, machine))
-                        if isinstance(e, Error):
-                            E(" %s" % e.stdout)
-                        else:
-                            import traceback
-                            traceback.print_exc(file=sys.stdout)
+                    while True:
+                        try:
+                            tim.testimage(succeeded_pkgs_ctx, machine, image)
+                            break
+                        except IntegrationError as e:
+                            E("    %s on machine %s failed in integration, removing..." 
+                                % (pkg_ctx['PN'], machine))
+
+                            with open(os.path.join(pkg_ctx['workdir'],
+                                'integration_error.log'), 'w+') as f:
+                                f.write(e.stdout)
+
+                            pkg_ctx['error'] = e
+                            failed_pkgs_ctx.append(pkg_ctx)
+                            succeeded_pkgs_ctx.remove(pkg_ctx)
+                            tim.prepare_branch(succeeded_pkgs_ctx)
+                        except Exception as e:
+                            E(" %s/testimage on machine %s failed" % (image, machine))
+                            if isinstance(e, Error):
+                                E(" %s" % e.stdout)
+                            else:
+                                import traceback
+                                traceback.print_exc(file=sys.stdout)
+                            break
             else:
                 I(" Testimage was enabled but any upgrade was successful.")
 
         for pn in pkgs_ctx.keys():
             pkg_ctx = pkgs_ctx[pn]
+
+            if pkg_ctx in succeeded_pkgs_ctx:
+                os.symlink(pkg_ctx['workdir'], os.path.join( \
+                    self.uh_recipes_succeed_dir, pkg_ctx['PN']))
+            else:
+                os.symlink(pkg_ctx['workdir'], os.path.join( \
+                    self.uh_recipes_failed_dir, pkg_ctx['PN']))
+
+            self.statistics.update(pkg_ctx['PN'], pkg_ctx['NPV'],
+                    pkg_ctx['MAINTAINER'], pkg_ctx['error'])
             self.pkg_upgrade_handler(pkg_ctx)
 
         if attempted_pkgs > 0:

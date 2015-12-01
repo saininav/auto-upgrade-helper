@@ -91,3 +91,12 @@ class EmptyEnvError(Error):
 
     def __str__(self):
         return "Failed(get_env)"
+
+class IntegrationError(Error):
+    def __init__(self, stdout, pkg_ctx):
+        super(IntegrationError, self).__init__("Failed to build %s in testimage branch"
+                % pkg_ctx['PN'], stdout)
+        self.pkg_ctx = pkg_ctx
+
+        def __str__(self):
+            return "Failed(integrate)"
