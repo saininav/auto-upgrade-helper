@@ -360,9 +360,9 @@ class Updater(object):
         with open(email_file, "w+") as f:
             f.write("To: %s\n" % to_addr)
             if isinstance(cc_addr, list):
-                f.write("To: %s\n" % ' '.join(to_addr))
+                f.write("To: %s\n" % ' '.join(cc_addr))
             else:
-                f.write("Cc: %s\n" % to_addr)
+                f.write("Cc: %s\n" % cc_addr)
 
             f.write("Subject: %s\n" % subject)
             f.write("Attachments: %s\n" % ' '.join(attachments))
@@ -897,6 +897,10 @@ if __name__ == "__main__":
         if not args.maintainer and args.send_emails:
             E(" For upgrade only one recipe and send email you must specify --maintainer\n")
             exit(1)
+
+        if not args.maintainer:
+            args.maintainer = "Upgrade Helper <%s>" % \
+                settings.get('from', 'uh@not.set')
 
         pkg_list = [(args.recipe, args.to_version, args.maintainer)]
         updater = Updater(args.auto_mode, args.send_emails, args.skip_compilation)
