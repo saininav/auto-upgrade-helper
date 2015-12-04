@@ -580,8 +580,13 @@ class Updater(object):
                                 % (pkg_ctx['PN'], machine))
 
                             with open(os.path.join(pkg_ctx['workdir'],
-                                'integration_error.log'), 'w+') as f:
+                                'integration_error.log'), 'a+') as f:
                                 f.write(e.stdout)
+
+                            if not pkg_ctx in succeeded_pkgs_ctx:
+                                E( "Infinite loop IntegrationError trying to " \
+                                   "remove %s twice, see logs.", pkg_ctx['PN'])
+                                break
 
                             pkg_ctx['error'] = e
                             failed_pkgs_ctx.append(pkg_ctx)
@@ -607,8 +612,13 @@ class Updater(object):
                                 % (pkg_ctx['PN'], machine))
 
                             with open(os.path.join(pkg_ctx['workdir'],
-                                'integration_error.log'), 'w+') as f:
+                                'integration_error.log'), 'a+') as f:
                                 f.write(e.stdout)
+
+                            if not pkg_ctx in succeeded_pkgs_ctx:
+                                E( "Infinite loop IntegrationError trying to " \
+                                   "remove %s twice, see logs.", pkg_ctx['PN'])
+                                break
 
                             pkg_ctx['error'] = e
                             failed_pkgs_ctx.append(pkg_ctx)
