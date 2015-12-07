@@ -46,14 +46,14 @@ def is_recipe_or_include_file(env, full_path_f, f):
     return is_file and (is_recipe or is_include)
 
 def modify_recipe_files(func):
-    def modify(env, recipe_dir):
+    def modify(env, recipe_dir, *args, **kwargs):
         for f in os.listdir(recipe_dir):
             full_path_f = os.path.join(recipe_dir, f)
             if is_recipe_or_include_file(env, full_path_f, f):
                 with open(full_path_f + ".tmp", "w+") as temp_recipe:
                     with open(full_path_f) as recipe:
                         for line in recipe:
-                            func(line, temp_recipe)
+                            func(line, temp_recipe, *args, **kwargs)
                 os.rename(full_path_f + ".tmp", full_path_f)
     return modify
 
@@ -129,7 +129,7 @@ class Recipe(object):
     def rename(self):
         # clean PR before renaming
         @modify_recipe_files
-        def _clean_pr(line, temp_recipe):
+        def _clean_pr(line, temp_recipe, *args, **kwargs):
             if not (line.startswith("PR=") or line.startswith("PR =")):
                 temp_recipe.write(line)
         _clean_pr(self.env, self.recipe_dir)
@@ -196,7 +196,8 @@ class Recipe(object):
         # checksums are usually in the main recipe but they can also be in inc
         # files... Go through the recipes/inc files until we find them
         @modify_recipe_files
-        def _update_recipe_checksums(line, temp_recipe):
+        def _update_recipe_checksums(line, temp_recipe, *args, **kwargs):
+            sums = args[0]
             for name in sums:
                 m1 = re.match("^SRC_URI\["+ name + "md5sum\].*", line)
                 m2 = re.match("^SRC_URI\["+ name + "sha256sum\].*", line)
@@ -208,7 +209,7 @@ class Recipe(object):
                     temp_recipe.write(line)
 
         I(" %s: Update recipe checksums ..." % self.env['PN'])
-        _update_recipe_checksums(self.env, self.recipe_dir)
+        _update_recipe_checksums(self.env, self.recipe_dir, sums)
 
         self.checksums_changed = True
 
@@ -230,9 +231,10 @@ class Recipe(object):
     def _change_source_suffix(self, new_suffix):
         # Will change the extension of the archive from the SRC_URI
 
-        source_found = False
         @modify_recipe_files
-        def _change(line, temp_recipe):
+        def _change(line, temp_recipe, *args, **kwargs):
+            d = args[0]
+
             # source on first line
             m1 = re.match("^SRC_URI.*\${PV}\.(.*)[\" \\\\].*", line)
             # SRC_URI alone on the first line
@@ -243,21 +245,23 @@ class Recipe(object):
                 old_suffix = m1.group(1)
                 line = line.replace(old_suffix, new_suffix+" ")
             if m2 and not m1:
-                source_found = True
-            if m3 and source_found:
+                d['source_found'] = True
+            if m3 and d['source_found']:
                 old_suffix = m3.group(1)
                 line = line.replace(old_suffix, new_suffix+" ")
-                source_found = False
+                d['source_found'] = False
 
             temp_recipe.write(line)
 
-        _change(self.env, self.recipe_dir)
+        d = {}
+        d['source_found'] = False
+        _change(self.env, self.recipe_dir, d)
 
     def _remove_patch_uri(self, uri):
-        removed = True
-
         @modify_recipe_files
-        def _remove(line, temp_recipe):
+        def _remove(line, temp_recipe, *args, **kwargs):
+            d = args[0]
+
             if line.find(uri) == -1:
                temp_recipe.write(line)
             else:
@@ -281,11 +285,13 @@ class Recipe(object):
                # nothing matched in recipe but we deleted the patch
                # anyway? Then we must bail out!
                else:
-                   removed = False
+                   d['removed'] = False
 
-        _remove(self.env, self.recipe_dir)
+        d = {}
+        d['removed'] = True
+        _remove(self.env, self.recipe_dir, d)
 
-        return removed
+        return d['removed']
 
     def _remove_faulty_patch(self, patch_log):
         patch_file = None
@@ -347,10 +353,11 @@ class Recipe(object):
 
     def _license_issue_handled(self, config_log):
         @modify_recipe_files
-        def _update_license_checksum(line, temp_recipe):
-            m = re.match("(.*)" + old_md5 + "(.*)", line)
+        def _update_license_checksum(line, temp_recipe, *args, **kwargs):
+            d = args[0]
+            m = re.match("(.*)" + d['old_md5'] + "(.*)", line)
             if m is not None:
-                temp_recipe.write(m.group(1) + new_md5 + m.group(2) + "\n")
+                temp_recipe.write(m.group(1) + d['new_md5'] + m.group(2) + "\n")
             else:
                 temp_recipe.write(line)
 
@@ -379,7 +386,10 @@ class Recipe(object):
                     new_md5 = m_new.group(1)
         
         if license_file is not None:
-            _update_license_checksum(self.env, self.recipe_dir)
+            d = {}
+            d['old_md5'] = old_md5
+            d['new_md5'] = new_md5
+            _update_license_checksum(self.env, self.recipe_dir, d)
 
             self.create_diff_file(license_file, old_md5, new_md5)
             self.license_diff_file = os.path.join(self.workdir, os.path.basename(license_file + ".diff"))
@@ -506,22 +516,22 @@ class Recipe(object):
                 replacement = "${" + prefixes[largest_prefix] + "}"
                 files[i] = files[i].replace(largest_prefix, replacement)
 
-
-        files_clause = False
         @modify_recipe_files
-        def _append_new_files(line, temp_file):
+        def _append_new_files(line, temp_file, *args, **kwargs):
+            d = args[0]
+
             if re.match("^FILES_\${PN}[ +=].*", line):
-                files_clause = True
+                d['files_clause'] = True
                 temp_recipe.write(line)
                 return
 
             # Get front spacing
-            if files_clause:
+            if d['files_clause']:
                 front_spacing = re.sub("[^ \t]", "", line)
 
             # Append once the last line has of FILES has been reached
-            if re.match(".*\".*", line) and files_clause:
-                files_clause = False
+            if re.match(".*\".*", line) and d['files_clause']:
+                d['files_clause'] = False
                 line = line.replace("\"", "")
                 line = line.rstrip()
                 front_spacing = re.sub("[^ \t]", "", line)
@@ -545,7 +555,9 @@ class Recipe(object):
 
             temp_recipe.write(line)
 
-        _append_new_files(self.env, self.recipe_dir)
+        d = {}
+        d['files_clause'] = False
+        _append_new_files(self.env, self.recipe_dir, d)
 
     def unpack(self):
         self.bb.unpack(self.env['PN'])
