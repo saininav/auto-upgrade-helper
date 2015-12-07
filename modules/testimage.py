@@ -130,6 +130,7 @@ class TestImage():
                 "(.*/([^/]*)/[^/]*/temp/log\.(.*)\.[0-9]*)", line)
             if m:
                 pn = m.group(2)
+                break
 
         return pn
 
