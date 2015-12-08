@@ -517,7 +517,7 @@ class Recipe(object):
                 files[i] = files[i].replace(largest_prefix, replacement)
 
         @modify_recipe_files
-        def _append_new_files(line, temp_file, *args, **kwargs):
+        def _append_new_files(line, temp_recipe, *args, **kwargs):
             d = args[0]
 
             if re.match("^FILES_\${PN}[ +=].*", line):
