@@ -42,10 +42,13 @@ def _pn_in_pkgs_ctx(pn, pkgs_ctx):
     return None
 
 class TestImage():
-    def __init__(self, bb, git, uh_work_dir):
+    def __init__(self, bb, git, uh_work_dir, opts, *args, **kwargs):
         self.bb = bb
         self.git = git
         self.uh_work_dir = uh_work_dir
+        self.opts = opts
+        self.pkgs_ctx = args[0]
+        self.image = args[1]
 
         os.environ['BB_ENV_EXTRAWHITE'] = os.environ['BB_ENV_EXTRAWHITE'] + \
             " TEST_SUITES CORE_IMAGE_EXTRA_INSTALL"
@@ -73,19 +76,29 @@ class TestImage():
         return ' '.join(pkgs_out)
 
     def prepare_branch(self, pkgs_ctx):
-        self.git.checkout_branch("master")
+        ok = False
+
         try:
-            self.git.delete_branch("testimage")
-            self.git.delete_branch("upgrades")
-        except Error:
-            pass
-        self.git.reset_hard()
+            self.git.reset_hard()
+            self.git.checkout_branch("master")
 
-        self.git.create_branch("testimage")
-        for c in pkgs_ctx:
-            patch_file = os.path.join(c['workdir'], c['patch_file'])
-            self.git.apply_patch(patch_file)
+            try:
+                self.git.delete_branch("testimage")
+            except Error:
+                pass
 
+            self.git.create_branch("testimage")
+            for c in pkgs_ctx:
+                patch_file = os.path.join(c['workdir'], c['patch_file'])
+                self.git.apply_patch(patch_file)
+
+            ok = True
+        except Exception as e:
+            E(error_msg)
+            self._log_error(" testimage: Failed to prepare branch.")
+
+        return ok
+ 
     def _parse_ptest_log(self, log_file):
         ptest_results = {}
 
@@ -224,3 +237,71 @@ class TestImage():
                     for line in lf:
                         of.write(line)
                     of.write("END: TESTIMAGE for %s\n" % machine)
+
+    def _log_error(self, e):
+        if isinstance(e, Error):
+            E(" %s" % e.stdout)
+        else:
+            import traceback
+            tb = traceback.format_exc()
+            E("%s" % tb)
+
+    def _handle_error(self, e, machine):
+        handled = True
+
+        if isinstance(e, IntegrationError):
+            pkg_ctx = e.pkg_ctx
+
+            E("   %s on machine %s failed in integration, removing..."
+                % (pkg_ctx['PN'], machine))
+
+            with open(os.path.join(pkg_ctx['workdir'],
+                'integration_error.log'), 'a+') as f:
+                f.write(e.stdout)
+
+            if not pkg_ctx in self.pkgs_ctx['succeeded']:
+                E( "Infinite loop IntegrationError trying to " \
+                   "remove %s twice, see logs.", pkg_ctx['PN'])
+                handled = False
+            else:
+                pkg_ctx['error'] = e
+                self.pkgs_ctx['failed'].append(pkg_ctx)
+                self.pkgs_ctx['succeeded'].remove(pkg_ctx)
+
+                if not self.prepare_branch(self.pkgs_ctx['succeeded']):
+                    handled = False
+        else:
+            handled = False
+
+        return handled
+
+    def run(self):
+        if len(self.pkgs_ctx['succeeded']) <= 0:
+            I(" Testimage was enabled but any upgrade was successful.")
+            return
+
+        if not self.prepare_branch(self.pkgs_ctx['succeeded']):
+           return
+
+        I(" Images will test for %s." % ', '.join(self.opts['machines']))
+        for machine in self.opts['machines']:
+            I("  Testing images for %s ..." % machine)
+            while True:
+                try:
+                    self.ptest(self.pkgs_ctx['succeeded'], machine)
+                    break
+                except Exception as e:
+                    if not self._handle_error(e, machine):
+                        E(" %s/testimage on machine %s failed" % (self.image, machine))
+                        self._log_error(e)
+                        break
+
+            while True:
+                try:
+                    self.testimage(self.pkgs_ctx['succeeded'], machine, self.image)
+                    break
+                except Exception as e:
+                    if not self._handle_error(e, machine):
+                        E(" %s/testimage on machine %s failed" % (self.image, machine))
+                        self._log_error(e)
+                        break

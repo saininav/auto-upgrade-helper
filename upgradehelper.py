@@ -577,83 +577,14 @@ class Updater(object):
                     failed_pkgs_ctx.append(pkg_ctx)
 
         if self.opts['testimage']:
-            if len(succeeded_pkgs_ctx) > 0:
-                tim = TestImage(self.bb, self.git, self.uh_work_dir)
+            ctxs = {}
+            ctxs['succeeded'] = succeeded_pkgs_ctx
+            ctxs['failed'] = failed_pkgs_ctx
+            image = settings.get('testimage_name', DEFAULT_TESTIMAGE)
+            tim = TestImage(self.bb, self.git, self.uh_work_dir, self.opts,
+                   ctxs, image)
 
-                try:
-                    tim.prepare_branch(succeeded_pkgs_ctx)
-                except Exception as e:
-                    E(" testimage: Failed to prepare branch.")
-                    if isinstance(e, Error):
-                        E(" %s" % e.stdout)
-                    exit(1)
-
-                I(" Images will test for %s." % ', '.join(self.opts['machines']))
-                for machine in self.opts['machines']:
-                    I("  Testing images for %s ..." % machine)
-                    while True:
-                        try:
-                            tim.ptest(succeeded_pkgs_ctx, machine)
-                            break
-                        except IntegrationError as e:
-                            E("   %s on machine %s failed in integration, removing..." 
-                                % (pkg_ctx['PN'], machine))
-
-                            with open(os.path.join(pkg_ctx['workdir'],
-                                'integration_error.log'), 'a+') as f:
-                                f.write(e.stdout)
-
-                            if not pkg_ctx in succeeded_pkgs_ctx:
-                                E( "Infinite loop IntegrationError trying to " \
-                                   "remove %s twice, see logs.", pkg_ctx['PN'])
-                                break
-
-                            pkg_ctx['error'] = e
-                            failed_pkgs_ctx.append(pkg_ctx)
-                            succeeded_pkgs_ctx.remove(pkg_ctx)
-                            tim.prepare_branch(succeeded_pkgs_ctx)
-                        except Exception as e:
-                            E(" core-image-minimal/ptest on machine %s failed" % machine)
-                            if isinstance(e, Error):
-                                E(" %s" % e.stdout)
-                            else:
-                                import traceback
-                                traceback.print_exc(file=sys.stdout)
-
-                            break
-
-                    image = settings.get('testimage_name', DEFAULT_TESTIMAGE)
-                    while True:
-                        try:
-                            tim.testimage(succeeded_pkgs_ctx, machine, image)
-                            break
-                        except IntegrationError as e:
-                            E("    %s on machine %s failed in integration, removing..." 
-                                % (pkg_ctx['PN'], machine))
-
-                            with open(os.path.join(pkg_ctx['workdir'],
-                                'integration_error.log'), 'a+') as f:
-                                f.write(e.stdout)
-
-                            if not pkg_ctx in succeeded_pkgs_ctx:
-                                E( "Infinite loop IntegrationError trying to " \
-                                   "remove %s twice, see logs.", pkg_ctx['PN'])
-                                break
-
-                            pkg_ctx['error'] = e
-                            failed_pkgs_ctx.append(pkg_ctx)
-                            succeeded_pkgs_ctx.remove(pkg_ctx)
-                            tim.prepare_branch(succeeded_pkgs_ctx)
-                        except Exception as e:
-                            E(" %s/testimage on machine %s failed" % (image, machine))
-                            if isinstance(e, Error):
-                                E(" %s" % e.stdout)
-                            else:
-                                import traceback
-                                traceback.print_exc(file=sys.stdout)
-                            break
-            else:
-                I(" Testimage was enabled but any upgrade was successful.")
+            tim.run()
 
         for pn in pkgs_ctx.keys():
             pkg_ctx = pkgs_ctx[pn]
