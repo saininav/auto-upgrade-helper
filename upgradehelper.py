@@ -369,6 +369,8 @@ class Updater(object):
             f.write("\n%s\n" % msg_body)
 
     def commit_changes(self, pkg_ctx):
+        fail = False
+
         try:
             pkg_ctx['patch_file'] = None
 
@@ -376,19 +378,32 @@ class Updater(object):
                 I(" %s: Auto commit changes ..." % pkg_ctx['PN'])
                 self.git.commit(pkg_ctx['recipe'].commit_msg, self.opts['author'])
 
-                I(" %s: Save patch in directory: %s." %
-                        (pkg_ctx['PN'], pkg_ctx['workdir']))
-
                 stdout = self.git.create_patch(pkg_ctx['workdir'])
                 pkg_ctx['patch_file'] = stdout.strip()
+
+                if not pkg_ctx['patch_file']:
+                    msg = "Patch file not generated."
+                    E(" %s: %s\n %s" % (pkg_ctx['PN'], msg, stdout))
+                    pkg_ctx['error'] = Error(msg, stdout)
+                    fail = True
+                else:
+                    I(" %s: Save patch in directory: %s." %
+                        (pkg_ctx['PN'], pkg_ctx['workdir']))
         except Error as e:
+            msg = ''
+
             for line in e.stdout.split("\n"):
                 if line.find("nothing to commit") == 0:
-                    I(" %s: Nothing to commit!" % pkg_ctx['PN'])
-                    return
+                    msg = "Nothing to commit!"
+                    I(" %s: %s" % (pkg_ctx['PN'], msg))
 
             I(" %s: %s" % (pkg_ctx['PN'], e.stdout))
-            raise e
+
+            pkg_ctx['error'] = Error(msg, e.stdout)
+            fail = True
+
+        if fail:
+            raise pkg_ctx['error']
 
     def send_status_mail(self, statistics_summary):
         if "status_recipients" not in settings:
@@ -554,7 +569,12 @@ class Updater(object):
                 pkg_ctx['error'] = e
                 failed_pkgs_ctx.append(pkg_ctx)
 
-            self.commit_changes(pkg_ctx)
+            try:
+                self.commit_changes(pkg_ctx)
+            except:
+                if pkg_ctx in succeeded_pkgs_ctx:
+                    succeeded_pkgs_ctx.remove(pkg_ctx)
+                    failed_pkgs_ctx.append(pkg_ctx)
 
         if self.opts['testimage']:
             if len(succeeded_pkgs_ctx) > 0:
