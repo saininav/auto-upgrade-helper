@@ -68,7 +68,7 @@ class Bitbake(object):
             D("%s returned:\n%s" % (cmd, e.__str__()))
 
             if self.log_dir is not None and os.path.exists(self.log_dir):
-                with open(os.path.join(self.log_dir, BITBAKE_ERROR_LOG), "w+") as log:
+                with open(os.path.join(self.log_dir, BITBAKE_ERROR_LOG), "a+") as log:
                     log.write(e.stdout)
 
             raise Error("\'" + cmd + "\' failed", e.stdout, e.stderr)
