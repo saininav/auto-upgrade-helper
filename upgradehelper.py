@@ -289,8 +289,8 @@ class Updater(object):
             "The recipe has been successfully compiled for machines %s.\n\n" \
             "Next steps:\n" \
             "    - apply the patch: git am %s\n" \
-            "    - check that required upstream patches have not been removed from the recipe,\n" \
-            "      if upstream patches were removed the reason is specified in the commit message.\n" \
+            "    - check that required upstream patches have not been commented from the recipe,\n" \
+            "      if upstream patches were commented the reason is specified in the commit message.\n" \
             "    - compile an image that contains the package\n" \
             "    - perform some basic sanity tests\n" \
             "    - amend the patch and sign it off: git commit -s --reset-author --amend\n" \

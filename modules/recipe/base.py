@@ -93,7 +93,7 @@ class Recipe(object):
         self.old_env = None
 
         self.commit_msg = self.env['PN'] + ": upgrade to " + self.new_ver + "\n\n"
-        self.rm_patches_msg = "\n\nRemoved the following patch(es):\n"
+        self.comment_patches_msg = "\n\nCommented the following patch(es):\n"
 
         self._inherits = None
 
@@ -257,43 +257,65 @@ class Recipe(object):
         d['source_found'] = False
         _change(self.env, self.recipe_dir, d)
 
-    def _remove_patch_uri(self, uri):
+    def _comment_patch_uri(self, uri):
         @modify_recipe_files
-        def _remove(line, temp_recipe, *args, **kwargs):
+        def _comment(line, temp_recipe, *args, **kwargs):
             d = args[0]
+            uri = d['uri']
 
-            if line.find(uri) == -1:
-               temp_recipe.write(line)
+            m1 = re.match("SRC_URI *\+*= *\" *" + uri + " *\"", line)
+            m2 = re.match("(SRC_URI *\+*= *\" *)" + uri + " *\\\\", line)
+            m3 = re.match("[\t ]*" + uri + " *\\\\", line)
+            m4 = re.match("([\t ]*)" + uri + " *\"", line)
+
+            if m1 or m2 or m3 or m4:
+                d['commented'] = True
+
+                if not d['start']:
+                    d['start'] = True
+
+                # patch on a single SRC_URI line:
+                if m1:
+                    d['patches'].append(line)
+                    d['end'] = True
+                # patch is on the first SRC_URI line
+                elif m2:
+                    d['patches'].append(line)
+                    temp_recipe.write(m2.group(1) + "\\\n")
+                # patch is in the middle
+                elif m3:
+                    d['patches'].append(line)
+                # patch is last in list
+                elif m4:
+                    d['end'] = True
+                    d['patches'].append(line)
+                    temp_recipe.write(m4.group(1) + "\"\n")
             else:
-               m1 = re.match("SRC_URI *\+*= *\" *" + uri + " *\"", line)
-               m2 = re.match("(SRC_URI *\+*= *\" *)" + uri + " *\\\\", line)
-               m3 = re.match("[\t ]*" + uri + " *\\\\", line)
-               m4 = re.match("([\t ]*)" + uri + " *\"", line)
+                temp_recipe.write(line)
 
-               # patch on a single SRC_URI line:
-               if m1:
-                   return
-               # patch is on the first SRC_URI line
-               elif m2:
-                   temp_recipe.write(m2.group(1) + "\\\n")
-               # patch is in the middle
-               elif m3:
-                   return
-               # patch is last in list
-               elif m4:
-                   temp_recipe.write(m4.group(1) + "\"\n")
-               # nothing matched in recipe but we deleted the patch
-               # anyway? Then we must bail out!
-               else:
-                   d['removed'] = False
+                if d['start'] and (d['end'] or line.strip().startswith('"')):
+                    if d['patches']:
+                        for p in d['patches']:
+                            line = p.rstrip()
+                            if line.endswith('\\'):
+                                line = line[:-1]
+                            temp_recipe.write("#%s\n" % line)
+
+                    d['start'] = False
+                    d['end'] = False
 
         d = {}
-        d['removed'] = True
-        _remove(self.env, self.recipe_dir, d)
+        d['commented'] = False
 
-        return d['removed']
+        d['uri'] = uri
+        d['patches'] = []
+        d['start'] = False
+        d['end'] = False
+        _comment(self.env, self.recipe_dir, d)
 
-    def _remove_faulty_patch(self, patch_log):
+        return d['commented']
+
+    def _comment_faulty_patch(self, patch_log):
         patch_file = None
         is_reverse_applied = False
 
@@ -311,7 +333,7 @@ class Recipe(object):
         if not patch_file:
             return False
 
-        I(" %s: Removing patch %s ..." % (self.env['PN'], patch_file))
+        I(" %s: Commenting patch %s ..." % (self.env['PN'], patch_file))
         reason = None
         found = False
         dirs = [self.env['PN'] + "-" + self.env['PKGV'], self.env['PN'], "files"]
@@ -321,24 +343,26 @@ class Recipe(object):
                 continue
             else:
                 found = True
+
                 # Find out upstream status of the patch
                 with open(patch_file_path) as patch:
                     for line in patch:
                         m = re.match(".*Upstream-Status:(.*)\n", line)
                         if m:
                             reason = m.group(1).strip().split()[0].lower()
-                os.remove(patch_file_path)
-                if not self._remove_patch_uri("file://" + patch_file):
+
+                if not self._comment_patch_uri("file://" + patch_file):
                     return False
         if not found:
             return False
 
-        self.rm_patches_msg += " * " + patch_file
+        self.comment_patches_msg += " * " + patch_file
         if reason:
-            self.rm_patches_msg += " (" + reason + ") "
+            self.comment_patches_msg += " (" + reason + ") "
         if is_reverse_applied:
-            self.rm_patches_msg += "+ reverse-applied"
-        self.rm_patches_msg += "\n"
+            self.comment_patches_msg += "+ reverse-applied"
+        self.comment_patches_msg += "\n"
+
         return True
 
     def _is_license_issue(self, config_log):
@@ -628,7 +652,7 @@ class Recipe(object):
         # Undo removed patches
         if self.removed_patches:
             self.git.checkout_branch("upgrades")
-            self.git.delete_branch("remove_patches")
+            self.git.delete_branch("comment_patches")
             self.git.reset_hard()
             self.git.reset_soft(1)
             self.removed_patches = False
@@ -639,9 +663,9 @@ class Recipe(object):
             if self.removed_patches:
                 # move temporary changes into upgrades branch
                 self.git.checkout_branch("upgrades")
-                self.git.delete_branch("remove_patches")
+                self.git.delete_branch("comment_patches")
                 self.git.reset_soft(1)
-                self.commit_msg += self.rm_patches_msg + "\n"
+                self.commit_msg += self.comment_patches_msg + "\n"
                 self.removed_patches = False
         except Error as e:
             if self._is_incompatible_host(e.stdout):
@@ -659,14 +683,16 @@ class Recipe(object):
                 failed_task = failed_recipes[self.env['PN']][0]
                 log_file = failed_recipes[self.env['PN']][1]
                 if failed_task == "do_patch":
-                    # Remove one patch after the other until
+
+                    # Comment one patch after the other until
                     # compilation works.
                     if not self.removed_patches:
                         self.git.commit("temporary")
-                        self.git.create_branch("remove_patches")
-                        self.git.checkout_branch("remove_patches")
+                        self.git.create_branch("comment_patches")
+                        self.git.checkout_branch("comment_patches")
                         self.removed_patches = True
-                    if not self._remove_faulty_patch(log_file):
+
+                    if not self._comment_faulty_patch(log_file):
                         self._undo_temporary()
                         raise PatchError()
 
