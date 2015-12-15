@@ -292,6 +292,9 @@ class Updater(object):
             "    - amend the patch and sign it off: git commit -s --reset-author --amend\n" \
             "    - send it to the list\n\n" \
 
+        testimage_integration_error = \
+            "The recipe *FAILED* in testimage integration. Attached is the log file.\n\n"
+
         testimage_ptest_info = \
             "The recipe has ptest enabled and has been tested with core-image-minimal/ptest \n" \
             "with the next machines %s. Attached is the log file.\n\n"
@@ -330,13 +333,16 @@ class Updater(object):
                     os.path.basename(pkg_ctx['patch_file']))
 
         if self.opts['testimage']:
-            if 'ptest' in pkg_ctx:
-                machines = pkg_ctx['ptest'].keys()
-                msg_body += testimage_ptest_info % machines
-            if 'testimage' in pkg_ctx:
-                machines = pkg_ctx['testimage'].keys()
-                msg_body += testimage_info % (settings.get('testimage_name', \
-                    DEFAULT_TESTIMAGE), machines)
+            if 'integration_error' in pkg_ctx:
+                msg_body += testimage_integration_error
+            else:
+                if 'ptest' in pkg_ctx:
+                    machines = pkg_ctx['ptest'].keys()
+                    msg_body += testimage_ptest_info % machines
+                if 'testimage' in pkg_ctx:
+                    machines = pkg_ctx['testimage'].keys()
+                    msg_body += testimage_info % (settings.get('testimage_name', \
+                        DEFAULT_TESTIMAGE), machines)
 
         msg_body += mail_footer
 

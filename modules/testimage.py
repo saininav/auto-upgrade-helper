@@ -47,7 +47,7 @@ class TestImage():
         self.git = git
         self.uh_work_dir = uh_work_dir
         self.opts = opts
-        self.pkgs_ctx = args[0]
+        self.pkgs_ctx = args[0]['succeeded'][:]
         self.image = args[1]
 
         os.environ['BB_ENV_EXTRAWHITE'] = os.environ['BB_ENV_EXTRAWHITE'] + \
@@ -259,12 +259,12 @@ class TestImage():
                 'integration_error.log'), 'a+') as f:
                 f.write(e.stdout)
 
-            if not pkg_ctx in self.pkgs_ctx['succeeded']:
-                E( "Infinite loop IntegrationError trying to " \
+            if not pkg_ctx in self.pkgs_ctx:
+                E("   Infinite loop IntegrationError trying to " \
                    "remove %s twice, see logs.", pkg_ctx['PN'])
                 handled = False
             else:
-                pkg_ctx['error'] = e
+                pkg_ctx['integration_error'] = e
 
                 # remove previous build tmp, sstate to avoid QA errors
                 # on lower versions
@@ -273,10 +273,9 @@ class TestImage():
                 I("     removing tmp directory ...")
                 shutil.rmtree(os.path.join(get_build_dir(), "tmp"))
 
-                self.pkgs_ctx['failed'].append(pkg_ctx)
-                self.pkgs_ctx['succeeded'].remove(pkg_ctx)
+                self.pkgs_ctx.remove(pkg_ctx)
 
-                if not self.prepare_branch(self.pkgs_ctx['succeeded']):
+                if not self.prepare_branch(self.pkgs_ctx):
                     handled = False
         else:
             handled = False
@@ -284,11 +283,11 @@ class TestImage():
         return handled
 
     def run(self):
-        if len(self.pkgs_ctx['succeeded']) <= 0:
+        if len(self.pkgs_ctx) <= 0:
             I(" Testimage was enabled but any upgrade was successful.")
             return
 
-        if not self.prepare_branch(self.pkgs_ctx['succeeded']):
+        if not self.prepare_branch(self.pkgs_ctx):
            return
 
         I(" Images will test for %s." % ', '.join(self.opts['machines']))
@@ -296,7 +295,7 @@ class TestImage():
             I("  Testing images for %s ..." % machine)
             while True:
                 try:
-                    self.ptest(self.pkgs_ctx['succeeded'], machine)
+                    self.ptest(self.pkgs_ctx, machine)
                     break
                 except Exception as e:
                     if not self._handle_error(e, machine):
@@ -306,7 +305,7 @@ class TestImage():
 
             while True:
                 try:
-                    self.testimage(self.pkgs_ctx['succeeded'], machine, self.image)
+                    self.testimage(self.pkgs_ctx, machine, self.image)
                     break
                 except Exception as e:
                     if not self._handle_error(e, machine):
