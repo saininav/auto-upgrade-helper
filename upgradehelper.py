@@ -51,7 +51,7 @@ sys.path.insert(1, os.path.join(os.path.abspath(
 from errors import *
 
 from utils.git import Git
-from utils.bitbake import Bitbake
+from utils.bitbake import *
 from utils.emailhandler import Email
 
 from statistics import Statistics
@@ -93,10 +93,6 @@ def parse_cmdline():
     parser.add_argument("-c", "--config-file", default=None,
                         help="Path to the configuration file. Default is $BUILDDIR/upgrade-helper/upgrade-helper.conf")
     return parser.parse_args()
-
-
-def get_build_dir():
-    return os.getenv('BUILDDIR')
 
 def parse_config_file(config_file):
     settings = dict()

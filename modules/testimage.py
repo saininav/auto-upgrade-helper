@@ -265,6 +265,14 @@ class TestImage():
                 handled = False
             else:
                 pkg_ctx['error'] = e
+
+                # remove previous build tmp, sstate to avoid QA errors
+                # on lower versions
+                I("     removing sstate directory ...")
+                shutil.rmtree(os.path.join(get_build_dir(), "sstate-cache"))
+                I("     removing tmp directory ...")
+                shutil.rmtree(os.path.join(get_build_dir(), "tmp"))
+
                 self.pkgs_ctx['failed'].append(pkg_ctx)
                 self.pkgs_ctx['succeeded'].remove(pkg_ctx)
 

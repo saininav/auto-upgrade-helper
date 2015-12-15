@@ -40,6 +40,9 @@ for path in os.environ["PATH"].split(':'):
 
 BITBAKE_ERROR_LOG = 'bitbake_error_log.txt'
 
+def get_build_dir():
+    return os.getenv('BUILDDIR')
+
 class Bitbake(object):
     def __init__(self, build_dir):
         self.build_dir = build_dir
