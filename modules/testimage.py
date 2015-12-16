@@ -139,6 +139,11 @@ class TestImage():
         pn = None
 
         for line in log.splitlines():
+            m = re.match("ERROR: QA Issue: ([^ :]*): (.*) not shipped", line)
+            if m:
+                pn = m.group(1)
+                break
+
             m = re.match("ERROR: Logfile of failure stored in: " \
                 "(.*/([^/]*)/[^/]*/temp/log\.(.*)\.[0-9]*)", line)
             if m:
@@ -147,9 +152,9 @@ class TestImage():
 
         return pn
 
-    def _handle_image_build_error(self, pkgs_ctx, e):
+    def _handle_image_build_error(self, image, pkgs_ctx, e):
         pn = self._get_failed_recipe(e.stdout)
-        if pn:
+        if pn and pn != image:
             pkg_ctx = _pn_in_pkgs_ctx(pn, pkgs_ctx)
             if pkg_ctx:
                 raise IntegrationError(e.stdout, pkg_ctx)
@@ -167,19 +172,20 @@ class TestImage():
         raise e
 
     def ptest(self, pkgs_ctx, machine):
+        image = 'core-image-minimal'
         ptest_pkgs = self._get_ptest_pkgs(pkgs_ctx)
 
         os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
             self._get_pkgs_to_install(ptest_pkgs, ptest=True)
-        I( "   building core-image-minimal for %s ..." % machine)
+        I( "   building %s for %s ..." % (image, machine))
         try:
-            self.bb.complete("core-image-minimal", machine)
+            self.bb.complete(image, machine)
         except Error as e:
-            self._handle_image_build_error(pkgs_ctx, e)
+            self._handle_image_build_error(image, pkgs_ctx, e)
 
         os.environ['TEST_SUITES'] = "ping ssh _ptest"
-        I( "   running core-image-minimal/ptest for %s ..." % machine)
-        self.bb.complete("core-image-minimal -c testimage", machine)
+        I( "   running %s/ptest for %s ..." % (image, machine))
+        self.bb.complete("%s -c testimage" % image, machine)
 
         ptest_log_file = self._find_log("ptest.log", machine)
         shutil.copyfile(ptest_log_file,
@@ -215,7 +221,7 @@ class TestImage():
         try:
             self.bb.complete(image, machine)
         except Error as e:
-            self._handle_image_build_error(pkgs_ctx, e)
+            self._handle_image_build_error(image, pkgs_ctx, e)
 
         I( "   running %s/testimage for %s ..." % (image, machine))
         self.bb.complete("%s -c testimage" % image, machine)
