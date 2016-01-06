@@ -165,10 +165,10 @@ class Updater(object):
         self.uh_dir = os.path.join(build_dir, "upgrade-helper")
         if not os.path.exists(self.uh_dir):
             os.mkdir(self.uh_dir)
-        uh_base_work_dir = settings.get('workdir', '')
-        if not uh_base_work_dir:
-            uh_base_work_dir = self.uh_dir
-        self.uh_work_dir = os.path.join(uh_base_work_dir, "%s" % \
+        self.uh_base_work_dir = settings.get('workdir', '')
+        if not self.uh_base_work_dir:
+            self.uh_base_work_dir = self.uh_dir
+        self.uh_work_dir = os.path.join(self.uh_base_work_dir, "%s" % \
                 datetime.now().strftime("%Y%m%d%H%M%S"))
         os.mkdir(self.uh_work_dir)
         self.uh_recipes_all_dir = os.path.join(self.uh_work_dir, "all")
@@ -603,9 +603,18 @@ class Updater(object):
             self.pkg_upgrade_handler(pkg_ctx)
 
         if attempted_pkgs > 0:
+            publish_work_url = settings.get('publish_work_url', '')
+            work_tarball = os.path.join(self.uh_base_work_dir,
+                    os.path.basename(self.uh_work_dir) + '.tar.gz')
+            if publish_work_url:
+                I(" Generating work tarball in %s ..." % work_tarball)
+                import subprocess
+                if subprocess.call(["tar", "-chzf", work_tarball, self.uh_work_dir]):
+                    E(" Work tarball (%s) generation failed..." % (work_tarball))
+                    publish_work_url = ''
+
             statistics_summary = self.statistics.get_summary(
-                    settings.get('publish_work_url', 'no'),
-                    os.path.basename(self.uh_work_dir))
+                    publish_work_url, work_tarball)
 
             statistics_file = os.path.join(self.uh_work_dir,
                     "statistics_summary")
