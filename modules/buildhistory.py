@@ -61,14 +61,20 @@ class BuildHistory(object):
         rev_initial = self.revs[0]
         rev_final = self.revs[-1]
 
-        cmd = "buildhistory-diff -a -p %s %s %s"  % (self.buildhistory_dir, 
-                rev_initial, rev_final)
-
         try:
+            cmd = "buildhistory-diff -p %s %s %s"  % (self.buildhistory_dir, 
+                rev_initial, rev_final)
             stdout, stderr = bb.process.run(cmd)
-
             if stdout and os.path.exists(self.workdir):
                 with open(os.path.join(self.workdir, "buildhistory-diff.txt"),
+                        "w+") as log:
+                    log.write(stdout)
+
+            cmd_full = "buildhistory-diff -a -p %s %s %s"  % (self.buildhistory_dir, 
+                        rev_initial, rev_final)
+            stdout, stderr = bb.process.run(cmd_full)
+            if stdout and os.path.exists(self.workdir):
+                with open(os.path.join(self.workdir, "buildhistory-diff-full.txt"),
                         "w+") as log:
                     log.write(stdout)
         except bb.process.ExecutionError as e:
