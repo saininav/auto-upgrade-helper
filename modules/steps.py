@@ -20,6 +20,7 @@
 
 import os
 import sys
+import subprocess
 
 from logging import debug as D
 from logging import info as I
@@ -99,6 +100,19 @@ def buildhistory_init(bb, git, opts, pkg_ctx):
 def unpack_original(bb, git, opts, pkg_ctx):
     pkg_ctx['recipe'].unpack()
 
+def pack_original_workdir(bb, git, opts, pkg_ctx):
+    recipe_workdir = os.path.dirname(pkg_ctx['env']['S'])
+    pkg_ctx['recipe_workdir_tarball'] = os.path.join(pkg_ctx['workdir'],
+            'original_workdir.tar.gz')
+
+    try:
+        subprocess.call(["tar", "-chzf", pkg_ctx['recipe_workdir_tarball'],
+                         recipe_workdir], stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+    except:
+        W(" %s, Can't compress original workdir, if license diff" \
+          " is needed will show full file." % pkg_ctx['PN'])
+
 def rename(bb, git, opts, pkg_ctx):
     pkg_ctx['recipe'].rename()
 
@@ -111,6 +125,15 @@ def cleanall(bb, git, opts, pkg_ctx):
 
 def fetch(bb, git, opts, pkg_ctx):
     pkg_ctx['recipe'].fetch()
+
+def unpack_original_workdir(bb, git, opts, pkg_ctx):
+    try:
+        subprocess.call(["tar", "-xhzf", pkg_ctx['recipe_workdir_tarball'],
+                         "-C", "/"], stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+        os.unlink(pkg_ctx['recipe_workdir_tarball'])
+    except:
+        pass
 
 def compile(bb, git, opts, pkg_ctx):
     if opts['skip_compilation']:
@@ -136,9 +159,11 @@ upgrade_steps = [
     (detect_recipe_type, None),
     (buildhistory_init, None),
     (unpack_original, "Fetch & unpack original version ..."),
+    (pack_original_workdir, None),
     (rename, "Renaming recipes, reset PR (if exists) ..."),
     (cleanall, "Clean all ..."),
     (fetch, "Fetch new version (old checksums) ..."),
+    (unpack_original_workdir, None),
     (compile, None),
     (buildhistory_diff, None)
 ]
