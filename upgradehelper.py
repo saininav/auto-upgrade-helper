@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # vim: set ts=4 sw=4 et:
 #
 # Copyright (c) 2013 - 2014 Intel Corporation
@@ -40,7 +40,7 @@ from logging import critical as C
 import re
 import signal
 import sys
-import ConfigParser as cp
+import configparser as cp
 from datetime import datetime
 from datetime import date
 import shutil
