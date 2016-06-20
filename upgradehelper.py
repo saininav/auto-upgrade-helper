@@ -500,8 +500,9 @@ class Updater(object):
         return pkgs_to_upgrade_ordered
 
     def run(self, package_list=None):
-        pkgs_to_upgrade = self._order_pkgs_to_upgrade(
-                self._get_packages_to_upgrade(package_list))
+        #pkgs_to_upgrade = self._order_pkgs_to_upgrade(
+        #        self._get_packages_to_upgrade(package_list))
+        pkgs_to_upgrade = self._get_packages_to_upgrade(package_list)
         total_pkgs = len(pkgs_to_upgrade)
 
         pkgs_ctx = {}
