@@ -500,20 +500,6 @@ class Updater(object):
         return pkgs_to_upgrade_ordered
 
     def run(self, package_list=None):
-        I(" Building gcc runtimes ...")
-        for machine in self.opts['machines']:
-            I("  building gcc runtime for %s" % machine)
-            try:
-                self.bb.complete("gcc-runtime", machine)
-            except Exception as e:
-                E(" Can't build gcc-runtime for %s." % machine)
-
-                if isinstance(e, Error):
-                    E(e.stdout)
-                else:
-                    import traceback
-                    traceback.print_exc(file=sys.stdout)
-
         pkgs_to_upgrade = self._order_pkgs_to_upgrade(
                 self._get_packages_to_upgrade(package_list))
         total_pkgs = len(pkgs_to_upgrade)
@@ -531,6 +517,21 @@ class Updater(object):
 
             pkgs_ctx[p]['base_dir'] = self.uh_recipes_all_dir
         I(" ############################################################")
+
+        if pkgs_to_upgrade:
+            I(" Building gcc runtimes ...")
+            for machine in self.opts['machines']:
+                I("  building gcc runtime for %s" % machine)
+                try:
+                    self.bb.complete("gcc-runtime", machine)
+                except Exception as e:
+                    E(" Can't build gcc-runtime for %s." % machine)
+
+                    if isinstance(e, Error):
+                        E(e.stdout)
+                    else:
+                        import traceback
+                        traceback.print_exc(file=sys.stdout)
 
         succeeded_pkgs_ctx = []
         failed_pkgs_ctx = []
