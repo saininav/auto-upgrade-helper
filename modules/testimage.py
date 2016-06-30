@@ -90,7 +90,11 @@ class TestImage():
             self.git.create_branch("testimage")
             for c in pkgs_ctx:
                 patch_file = os.path.join(c['workdir'], c['patch_file'])
-                self.git.apply_patch(patch_file)
+                try:
+                    self.git.apply_patch(patch_file)
+                except Exception as e:
+                    c['integration_error'] = e
+                    self.git.abort_patch()
 
             ok = True
         except Exception as e:

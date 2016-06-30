@@ -64,6 +64,9 @@ class Git(object):
     def apply_patch(self, patch_file):
         return self._cmd("am %s" % patch_file)
 
+    def abort_patch(self):
+        return self._cmd("am --abort")
+
     def status(self):
         return self._cmd("status --porcelain")
 
