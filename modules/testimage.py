@@ -94,7 +94,6 @@ class TestImage():
 
             ok = True
         except Exception as e:
-            E(error_msg)
             self._log_error(" testimage: Failed to prepare branch.")
 
         return ok
