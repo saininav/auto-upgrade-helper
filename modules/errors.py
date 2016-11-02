@@ -64,6 +64,13 @@ class CompilationError(MaintainerError):
     def __str__(self):
         return "Failed(do_compile)"
 
+class PackageError(MaintainerError):
+    def __init__(self):
+        super(PackageError, self).__init__("do_package failed")
+
+    def __str__(self):
+        return "Failed(do_package)"
+
 class LicenseError(MaintainerError):
     def __init__(self):
         super(LicenseError, self).__init__("license checksum does not match")

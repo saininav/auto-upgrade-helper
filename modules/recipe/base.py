@@ -506,10 +506,10 @@ class Recipe(object):
           "/usr/lib/opie"   : "palmqtdir",
         }
 
-        I(" %s: Add new files in recipe ..." %  self.env['PN'])
         with open(package_log) as log:
             for line in log:
                 if re.match(".*Files/directories were installed but not shipped.*", line):
+                    I(" %s: Add new files in recipe ..." %  self.env['PN'])
                     files_not_shipped = True
                 # Extract path
                 line = line.strip()
@@ -582,6 +582,8 @@ class Recipe(object):
         d = {}
         d['files_clause'] = False
         _append_new_files(self.env, self.recipe_dir, d)
+
+        return files_not_shipped
 
     def unpack(self):
         self.bb.unpack(self.env['PN'])
@@ -711,8 +713,10 @@ class Recipe(object):
                 elif failed_task == "do_fetch":
                     raise FetchError()
                 elif failed_task == "do_package":
-                    self._add_not_shipped(log_file)
-                    self.compile(machine)
+                    if self._add_not_shipped(log_file):
+                        self.compile(machine)
+                    else:
+                        raise PackageError()
                 else:
                     self._undo_temporary()
                     # throw a compilation exception for everything else. It
