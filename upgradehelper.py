@@ -616,7 +616,7 @@ class Updater(object):
                     publish_work_url = ''
 
             statistics_summary = self.statistics.get_summary(
-                    publish_work_url, os.path.basename(work_tarball))
+                    publish_work_url, os.path.basename(self.uh_work_dir))
 
             statistics_file = os.path.join(self.uh_work_dir,
                     "statistics_summary")
