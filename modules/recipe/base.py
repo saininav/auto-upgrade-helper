@@ -713,10 +713,10 @@ class Recipe(object):
                 elif failed_task == "do_fetch":
                     raise FetchError()
                 elif failed_task == "do_package":
-                    if self._add_not_shipped(log_file):
-                        self.compile(machine)
-                    else:
-                        raise PackageError()
+                    raise PackageError()
+                    #if self._add_not_shipped(log_file):
+                    #    self.compile(machine)
+                    #else:
                 else:
                     self._undo_temporary()
                     # throw a compilation exception for everything else. It
