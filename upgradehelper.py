@@ -131,10 +131,6 @@ class Updater(object):
     def __init__(self, auto_mode=False, send_email=False, skip_compilation=False):
         build_dir = get_build_dir()
 
-        self._make_dirs(build_dir)
-
-        self._add_file_logger()
-
         self.bb = Bitbake(build_dir)
 
         try:
@@ -145,18 +141,43 @@ class Updater(object):
             E( " Bitbake output:\n%s" % (e.stdout))
             exit(1)
 
+        self._set_options(auto_mode, send_email, skip_compilation)
+
+        self._make_dirs(build_dir)
+
+        self._add_file_logger()
+
         self.email_handler = Email(settings)
         self.statistics = Statistics()
-        # XXX: assume that the poky directory is the first entry in the PATH
-        self.git = Git(os.path.dirname(os.getenv('PATH', False).split(':')[0]))
 
+    def _set_options(self, auto_mode, send_email, skip_compilation):
         self.opts = {}
+        self.opts['layer_mode'] = settings.get('layer_mode', '')
+        if self.opts['layer_mode'] == 'yes':
+            def _layer_settings_error(setting):
+                E(" In layer mode enable you need to specify %s.\n" % setting)
+                exit(1)
+
+            layer_settings = ('layer_name', 'layer_dir', 'layer_machines')
+            for s in layer_settings:
+                self.opts[s] = settings.get(s, '')
+                if not self.opts[s]:
+                    _layer_settings_error(s)
+
+            self.git = Git(self.opts['layer_dir'])
+            self.poky_git = Git(os.path.dirname(os.getenv('PATH', False).split(':')[0]))
+            self.opts['machines'] = self.opts['layer_machines'].split()
+        else:
+            # XXX: assume that the poky directory is the first entry in the PATH
+            self.git = Git(os.path.dirname(os.getenv('PATH', False).split(':')[0]))
+            self.poky_git = None
+            self.opts['machines'] = settings.get('machines',
+                'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
+
         self.opts['interactive'] = not auto_mode
         self.opts['send_email'] = send_email
         self.opts['author'] = "Upgrade Helper <%s>" % \
                 settings.get('from', 'uh@not.set')
-        self.opts['machines'] = settings.get('machines',
-                'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
         self.opts['skip_compilation'] = skip_compilation
         self.opts['buildhistory'] = self._buildhistory_is_enabled()
         self.opts['testimage'] = self._testimage_is_enabled()
@@ -168,6 +189,11 @@ class Updater(object):
         self.uh_base_work_dir = settings.get('workdir', '')
         if not self.uh_base_work_dir:
             self.uh_base_work_dir = self.uh_dir
+        if self.opts['layer_mode'] == 'yes':
+            self.uh_base_work_dir = os.path.join(self.uh_base_work_dir,
+                    self.opts['layer_name'])
+        if not os.path.exists(self.uh_base_work_dir):
+            os.mkdir(self.uh_base_work_dir)
         self.uh_work_dir = os.path.join(self.uh_base_work_dir, "%s" % \
                 datetime.now().strftime("%Y%m%d%H%M%S"))
         os.mkdir(self.uh_work_dir)
