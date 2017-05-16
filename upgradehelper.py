@@ -655,8 +655,11 @@ class Updater(object):
                 self.send_status_mail(statistics_summary)
 
 class UniverseUpdater(Updater):
-    def __init__(self):
+    def __init__(self, recipes=None):
         Updater.__init__(self, True, True)
+
+        # to filter recipes in upgrade
+        self.recipes = recipes
 
         # read history file
         self.history_file = os.path.join(get_build_dir(), "upgrade-helper", "history.uh")
@@ -694,11 +697,16 @@ class UniverseUpdater(Updater):
             I(" Removing tmp directory ...")
             shutil.rmtree(os.path.join(get_build_dir(), "tmp"))
 
-    def _check_upstream_versions(self, packages=[("universe", None, None)]):
+    def _check_upstream_versions(self):
         I(" Fetching upstream version(s) ...")
 
+        if self.recipes:
+            recipe = " ".join(self.recipes)
+        else:
+            recipe = 'universe'
+
         try:
-            self.bb.checkpkg(" ".join([p[0] for p in packages]))
+            self.bb.checkpkg(recipe)
         except Error as e:
             for line in e.stdout.split('\n'):
                 if line.find("ERROR: Task do_checkpkg does not exist") == 0:
@@ -876,16 +884,14 @@ if __name__ == "__main__":
                     level=debug_levels[args.debug_level - 1])
     settings, maintainer_override = parse_config_file(args.config_file)
 
-    if args.recipe == "all":
+    recipes = args.recipe.split()
+
+    if len(recipes) == 1 and recipes[0] == "all":
         updater = UniverseUpdater()
         updater.run()
-    else:
-        if not args.to_version:
-            E(" For upgrade only one recipe you must specify --to_version\n")
-            exit(1)
-
+    elif len(recipes) == 1 and args.to_version:
         if not args.maintainer and args.send_emails:
-            E(" For upgrade only one recipe and send email you must specify --maintainer\n")
+            E(" For upgrade one recipe and send email you must specify --maintainer\n")
             exit(1)
 
         if not args.maintainer:
@@ -895,3 +901,8 @@ if __name__ == "__main__":
         pkg_list = [(args.recipe, args.to_version, args.maintainer)]
         updater = Updater(args.auto_mode, args.send_emails, args.skip_compilation)
         updater.run(pkg_list)
+    else:
+        updater = UniverseUpdater(recipes)
+        updater.run()
+
+
