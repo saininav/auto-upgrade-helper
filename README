@@ -67,6 +67,12 @@ buildhistory=no
 testimage=no
 testimage_name=image-custom # defaults to core-image-sato
 
+# to enable upgrade recipes in a layer example for meta-intel
+layer_mode=False
+layer_name=meta-intel
+layer_dir=DIR/meta-intel
+layer_machines=intel-core2-32 intel-corei7-64 intel-quark
+
 --------------- snip ---------------
 
 3. Enable distrodata and supply appropriate additional metadata. For
