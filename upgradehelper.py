@@ -440,7 +440,11 @@ class Updater(object):
 
         to_list = settings["status_recipients"].split()
 
-        subject = "[AUH] Upgrade status: " + date.isoformat(date.today())
+        if self.opts['layer_mode'] == 'yes':
+            subject = "[AUH] Upgrade status %s: %s" \
+                    % (self.opts['layer_name'], date.isoformat(date.today()))
+        else:
+            subject = "[AUH] Upgrade status: " + date.isoformat(date.today())
 
         if self.statistics.total_attempted:
             self.email_handler.send_email(to_list, subject, statistics_summary)
