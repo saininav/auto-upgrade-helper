@@ -663,7 +663,13 @@ class UniverseUpdater(Updater):
         Updater.__init__(self, True, True)
 
         # to filter recipes in upgrade
-        self.recipes = recipes
+        if not recipes and self.opts['layer_mode'] == 'yes':
+            # when layer mode is enabled and no recipes are specified
+            # we need to figure out what recipes are provided by the
+            # layer to try upgrade
+            self.recipes = self._get_recipes_by_layer()
+        else:
+            self.recipes = recipes
 
         # read history file
         self.history_file = os.path.join(get_build_dir(), "upgrade-helper", "history.uh")
@@ -676,6 +682,30 @@ class UniverseUpdater(Updater):
                                                         line.split(',')[2],
                                                         line.split(',')[3],
                                                         line.split(',')[4]]
+    def _get_recipes_by_layer(self):
+        recipes = []
+
+        recipe_regex = re.compile('^(?P<name>.*):$')
+        layer_regex = re.compile('^  (?P<name>.*) +')
+
+        layers = False
+        name = ''
+
+        output = subprocess.check_output('bitbake-layers show-recipes',
+                shell=True)
+        for line in output.decode("utf-8") .split('\n'):
+            s = recipe_regex.search(line)
+            if s:
+                name = s.group('name')
+                continue
+
+            if not 'skipped' in line:
+                s = layer_regex.search(line)
+                if s:
+                    if s.group('name').strip() == self.opts['layer_name']:
+                        recipes.append(name)
+
+        return recipes
 
     def _update_master(self):
         if self.opts['layer_mode'] == 'yes':
