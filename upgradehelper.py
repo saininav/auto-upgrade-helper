@@ -710,6 +710,9 @@ class UniverseUpdater(Updater):
     def _update_master(self):
         if self.opts['layer_mode'] == 'yes':
             I(" Sync poky master ...")
+            self.poky_git.reset_hard()
+            self.poky_git.clean_untracked()
+            self.poky_git.checkout_branch("master")
             self.poky_git.pull()
 
         I(" Drop all uncommited changes (including untracked) ...")
