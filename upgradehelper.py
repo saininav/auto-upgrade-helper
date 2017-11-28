@@ -829,42 +829,13 @@ class UniverseUpdater(Updater):
         return True
 
     def _get_packages_to_upgrade(self, packages=None):
-        last_date_checked = None
-        last_master_commit = None
-        last_checkpkg_file = None
-        current_date = date.isoformat(date.today())
-        try:
-            stdout = self.git.last_commit("master")
-            cur_master_commit = stdout
-        except Error:
-            cur_master_commit = "unknown"
-
-        if os.path.exists(get_build_dir() + "/upgrade-helper/last_checkpkg_run"):
-            with open(get_build_dir() + "/upgrade-helper/last_checkpkg_run") as last_check:
-                line = last_check.read()
-                last_date_checked = line.split(',')[0]
-                last_master_commit = line.split(',')[1]
-                last_checkpkg_file = line.split(',')[2]
-                if not os.path.exists(last_checkpkg_file):
-                    last_checkpkg_file = None
-
-        if last_master_commit != cur_master_commit or last_date_checked != current_date or \
-                last_checkpkg_file is None:
-            self._check_upstream_versions()
-            last_checkpkg_file = os.path.realpath(get_build_dir() + "/tmp/log/checkpkg.csv")
-        else:
-            I(" Using last checkpkg.csv file since last master commit and last"
-              " check date are the same ...")
+        self._check_upstream_versions()
+        last_checkpkg_file = os.path.realpath(get_build_dir() + "/tmp/log/checkpkg.csv")
 
         pkgs_list = []
         for pkg in self._parse_checkpkg_file(last_checkpkg_file):
             if self._pkg_upgradable(pkg[0], pkg[1], pkg[2]):
                 pkgs_list.append(pkg)
-
-        # Update last_checkpkg_run only after the version check has been completed
-        with open(get_build_dir() + "/upgrade-helper/last_checkpkg_run", "w+") as last_check:
-            last_check.write(current_date + "," + cur_master_commit + "," +
-                             last_checkpkg_file)
 
         return pkgs_list
 
