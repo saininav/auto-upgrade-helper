@@ -240,12 +240,6 @@ class Updater(object):
                   " but isn't INHERIT in conf/local.conf, if you want"\
                   " to enable please set.")
                 exit(1)
-        else:
-            if 'buildhistory' in self.base_env['INHERIT']:
-                E(" Buildhistory was INHERIT in conf/local.conf"\
-                  " but buildhistory=yes isn't in upgrade-helper.conf,"\
-                  " if you want to enable please set.")
-                exit(1)
 
         return enabled
 
@@ -279,12 +273,6 @@ class Updater(object):
                 E(" testimage was enabled in upgrade-helper.conf"\
                   " but isn't INHERIT in conf/local.conf, if you want"\
                   " to enable please set.")
-                exit(1)
-        else:
-            if 'testimage' in self.base_env['INHERIT']:
-                E(" testimage was INHERIT in conf/local.conf"\
-                  " but testimage=yes isn't in upgrade-helper.conf,"\
-                  " if you want to enable please set.")
                 exit(1)
 
         return enabled
