@@ -526,13 +526,14 @@ class Updater(object):
         pkgs_ctx = {}
 
         I(" ########### The list of recipes to be upgraded #############")
-        for p, v, m in pkgs_to_upgrade:
-            I(" %s, %s, %s" % (p, v, m))
+        for p, v, m, r in pkgs_to_upgrade:
+            I(" %s, %s, %s, %s" % (p, v, m, r))
 
             pkgs_ctx[p] = {}
             pkgs_ctx[p]['PN'] = p
             pkgs_ctx[p]['NPV'] = v
             pkgs_ctx[p]['MAINTAINER'] = m
+            pkgs_ctx[p]['NSRCREV'] = r
 
             pkgs_ctx[p]['base_dir'] = self.uh_recipes_all_dir
         I(" ############################################################")
@@ -555,7 +556,7 @@ class Updater(object):
         succeeded_pkgs_ctx = []
         failed_pkgs_ctx = []
         attempted_pkgs = 0
-        for pn, _, _ in pkgs_to_upgrade:
+        for pn, _, _, _ in pkgs_to_upgrade:
             pkg_ctx = pkgs_ctx[pn]
             pkg_ctx['error'] = None
 
@@ -738,11 +739,12 @@ class UniverseUpdater(Updater):
                 cur_ver = row[1]
                 next_ver = row[2]
                 status = row[11]
+                revision = row[12]
                 maintainer = row[14]
                 no_upgrade_reason = row[15]
 
                 if status == 'UPDATE' and not no_upgrade_reason:
-                    pkgs_list.append((pn, next_ver, maintainer))
+                    pkgs_list.append((pn, next_ver, maintainer, revision))
                 else:
                     if no_upgrade_reason:
                         D(" Skip package %s (status = %s, current version = %s," \
