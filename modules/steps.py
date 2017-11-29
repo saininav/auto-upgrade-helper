@@ -21,6 +21,8 @@
 import os
 import sys
 import subprocess
+import shutil
+import re
 
 from logging import debug as D
 from logging import info as I
@@ -31,40 +33,7 @@ from logging import critical as C
 from errors import *
 from buildhistory import BuildHistory
 
-from recipe.base import Recipe
-from recipe.git import GitRecipe
-from recipe.svn import SvnRecipe
-
-def clean_repo(bb, git, opts, pkg_ctx):
-    git.checkout_branch("master")
-
-    try:
-        git.delete_branch("remove_patches")
-    except:
-        pass
-    try:
-        git.delete_branch("upgrades")
-    except:
-        pass
-
-    git.reset_hard()
-    git.create_branch("upgrades")
-
-def load_env(bb, git, opts, pkg_ctx):
-    stdout = git.status()
-    if stdout != "":
-        if opts['interactive']:
-            W(" %s: git repository has uncommited work which will be dropped!" \
-                    " Proceed? (y/N)" % pkg_ctx['PN'])
-            answer = sys.stdin.readline().strip().upper()
-            if answer == '' or answer != 'Y':
-                I(" %s: User abort!" % pkg_ctx['PN'])
-                exit(1)
-
-        I(" %s: Dropping uncommited work!" % pkg_ctx['PN'])
-        git.reset_hard()
-        git.clean_untracked()
-
+def load_env(devtool, bb, git, opts, pkg_ctx):
     pkg_ctx['env'] = bb.env(pkg_ctx['PN'])
     pkg_ctx['workdir'] = os.path.join(pkg_ctx['base_dir'], pkg_ctx['PN'])
     os.mkdir(pkg_ctx['workdir'])
@@ -73,97 +42,117 @@ def load_env(bb, git, opts, pkg_ctx):
     if pkg_ctx['env']['PV'] == pkg_ctx['NPV']:
         raise UpgradeNotNeededError
 
-def detect_recipe_type(bb, git, opts, pkg_ctx):
-    if pkg_ctx['env']['SRC_URI'].find("ftp://") != -1 or  \
-            pkg_ctx['env']['SRC_URI'].find("http://") != -1 or \
-            pkg_ctx['env']['SRC_URI'].find("https://") != -1:
-        recipe = Recipe
-    elif pkg_ctx['env']['SRC_URI'].find("git://") != -1:
-        recipe = GitRecipe
-    else:
-        raise UnsupportedProtocolError
-
-    pkg_ctx['recipe'] = recipe(pkg_ctx['env'], pkg_ctx['NPV'],
-            opts['interactive'], pkg_ctx['workdir'],
-            pkg_ctx['recipe_dir'], bb, git)
-
-def buildhistory_init(bb, git, opts, pkg_ctx):
+def buildhistory_init(devtool, bb, git, opts, pkg_ctx):
     if not opts['buildhistory']:
         return
 
     pkg_ctx['buildhistory'] = BuildHistory(bb, pkg_ctx['PN'],
             pkg_ctx['workdir'])
     I(" %s: Initial buildhistory for %s ..." % (pkg_ctx['PN'],
-            opts['machines']))
-    pkg_ctx['buildhistory'].init(opts['machines'])
+            opts['machines'][:1]))
+    pkg_ctx['buildhistory'].init(opts['machines'][:1])
 
-def unpack_original(bb, git, opts, pkg_ctx):
-    pkg_ctx['recipe'].unpack()
+def _extract_license_diff(devtool_output):
+    licenseinfo = []
+    for line in devtool_output.split('\n'):
+        if line.startswith("NOTE: New recipe is"):
+            recipepath = line.split()[4]
+            with open(recipepath, 'rb') as f:
+                lines = f.readlines()
 
-def pack_original_workdir(bb, git, opts, pkg_ctx):
-    recipe_workdir = os.path.dirname(pkg_ctx['env']['S'])
-    pkg_ctx['recipe_workdir_tarball'] = os.path.join(pkg_ctx['workdir'],
-            'original_workdir.tar.gz')
+            extracting = False
+            with open(recipepath, 'wb') as f:
+                for line in lines:
+                     if line.startswith(b'# FIXME: the LIC_FILES_CHKSUM'):
+                         extracting = True
+                     elif extracting == True and not line.startswith(b'#') and len(line) > 1:
+                         extracting = False
+                     if extracting == True:
+                         licenseinfo.append(line[2:])
+                     else:
+                         f.write(line)
+    D(" License diff extracted: {}".format(b"".join(licenseinfo).decode('utf-8')))
+    return licenseinfo
+
+def devtool_upgrade(devtool, bb, git, opts, pkg_ctx):
+    if pkg_ctx['NPV'].endswith("new-commits-available"):
+        pkg_ctx['commit_msg'] = "{}: upgrade to latest revision".format(pkg_ctx['PN'])
+    else:
+        pkg_ctx['commit_msg'] = "{}: upgrade {} -> {}".format(pkg_ctx['PN'], pkg_ctx['PV'], pkg_ctx['NPV'])
 
     try:
-        subprocess.call(["tar", "-chzf", pkg_ctx['recipe_workdir_tarball'],
-                         recipe_workdir], stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE)
-    except:
-        W(" %s, Can't compress original workdir, if license diff" \
-          " is needed will show full file." % pkg_ctx['PN'])
+        devtool_output = devtool.upgrade(pkg_ctx['PN'], pkg_ctx['NPV'], pkg_ctx['NSRCREV'])
+    except DevtoolError as e1:
+        try:
+            devtool_output = devtool.reset(pkg_ctx['PN'])
+            _rm_source_tree(devtool_output)
+        except DevtoolError as e2:
+            pass
+        raise e1
 
-def rename(bb, git, opts, pkg_ctx):
-    pkg_ctx['recipe'].rename()
+    license_diff_info = _extract_license_diff(devtool_output)
+    if len(license_diff_info) > 0:
+        pkg_ctx['license_diff_fn'] = "license-diff.txt"
+        with open(os.path.join(pkg_ctx['workdir'], pkg_ctx['license_diff_fn']), 'wb') as f:
+            f.write(b"".join(license_diff_info))
 
-    pkg_ctx['env'] = bb.env(pkg_ctx['PN'])
+    D(" 'devtool upgrade' printed:\n%s" %(devtool_output))
 
-    pkg_ctx['recipe'].update_env(pkg_ctx['env'])
+def _compile(bb, pkg, machine, workdir):
+        try:
+            bb.complete(pkg, machine)
+        except Error as e:
+            with open("{}/bitbake-output-{}.txt".format(workdir, machine), 'w') as f:
+                f.write(e.stdout)
+            for line in e.stdout.split("\n"):
+                # version going backwards is not a real error
+                if re.match(".* went backwards which would break package feeds .*", line):
+                    break
+            else:
+                raise CompilationError()
 
-def cleanall(bb, git, opts, pkg_ctx):
-    pkg_ctx['recipe'].cleanall()
-
-def fetch(bb, git, opts, pkg_ctx):
-    pkg_ctx['recipe'].fetch()
-
-def unpack_original_workdir(bb, git, opts, pkg_ctx):
-    try:
-        subprocess.call(["tar", "-xhzf", pkg_ctx['recipe_workdir_tarball'],
-                         "-C", "/"], stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE)
-        os.unlink(pkg_ctx['recipe_workdir_tarball'])
-    except:
-        pass
-
-def compile(bb, git, opts, pkg_ctx):
+def compile(devtool, bb, git, opts, pkg_ctx):
     if opts['skip_compilation']:
         W(" %s: Compilation was skipped by user choice!")
         return
 
     for machine in opts['machines']:
-        I(" %s: compiling for %s ..." % (pkg_ctx['PN'], machine))
-        pkg_ctx['recipe'].compile(machine)
+        I(" %s: compiling upgraded version for %s ..." % (pkg_ctx['PN'], machine))
+        _compile(bb, pkg_ctx['PN'], machine, pkg_ctx['workdir'])
         if opts['buildhistory']:
             pkg_ctx['buildhistory'].add()
 
-def buildhistory_diff(bb, git, opts, pkg_ctx):
+def buildhistory_diff(devtool, bb, git, opts, pkg_ctx):
     if not opts['buildhistory']:
         return
 
     I(" %s: Checking buildhistory ..." % pkg_ctx['PN'])
     pkg_ctx['buildhistory'].diff()
 
+def _rm_source_tree(devtool_output):
+    for line in devtool_output.split("\n"):
+        if line.startswith("NOTE: Leaving source tree"):
+            srctree = line.split()[4]
+            shutil.rmtree(srctree)
+
+def devtool_finish(devtool, bb, git, opts, pkg_ctx):
+    try:
+        devtool_output = devtool.finish(pkg_ctx['PN'], pkg_ctx['recipe_dir'])
+        _rm_source_tree(devtool_output)
+        D(" 'devtool finish' printed:\n%s" %(devtool_output))
+    except DevtoolError as e1:
+        try:
+            devtool_output = devtool.reset(pkg_ctx['PN'])
+            _rm_source_tree(devtool_output)
+        except DevtoolError as e2:
+            pass
+        raise e1
+
 upgrade_steps = [
-    (clean_repo, "Cleaning git repository of temporary branch ..."),
     (load_env, "Loading environment ..."),
-    (detect_recipe_type, None),
     (buildhistory_init, None),
-    (unpack_original, "Fetch & unpack original version ..."),
-    (pack_original_workdir, None),
-    (rename, "Renaming recipes, reset PR (if exists) ..."),
-    (cleanall, "Clean all ..."),
-    (fetch, "Fetch new version (old checksums) ..."),
-    (unpack_original_workdir, None),
+    (devtool_upgrade, "Running 'devtool upgrade' ..."),
+    (devtool_finish, "Running 'devtool finish' ..."),
     (compile, None),
-    (buildhistory_diff, None)
+    (buildhistory_diff, None),
 ]

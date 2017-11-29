@@ -51,6 +51,7 @@ sys.path.insert(1, os.path.join(os.path.abspath(
 from errors import *
 
 from utils.git import Git
+from utils.devtool import Devtool
 from utils.bitbake import *
 from utils.emailhandler import Email
 
@@ -132,6 +133,7 @@ class Updater(object):
         build_dir = get_build_dir()
 
         self.bb = Bitbake(build_dir)
+        self.devtool = Devtool()
 
         try:
             self.base_env = self.bb.env()
@@ -386,25 +388,23 @@ class Updater(object):
 
     def commit_changes(self, pkg_ctx):
         fail = False
-
         try:
             pkg_ctx['patch_file'] = None
 
-            if 'recipe' in pkg_ctx:
-                I(" %s: Auto commit changes ..." % pkg_ctx['PN'])
-                self.git.commit(pkg_ctx['recipe'].commit_msg, self.opts['author'])
+            I(" %s: Auto commit changes ..." % pkg_ctx['PN'])
+            self.git.commit(pkg_ctx['commit_msg'], self.opts['author'])
 
-                stdout = self.git.create_patch(pkg_ctx['workdir'])
-                pkg_ctx['patch_file'] = stdout.strip()
+            stdout = self.git.create_patch(pkg_ctx['workdir'])
+            pkg_ctx['patch_file'] = stdout.strip()
 
-                if not pkg_ctx['patch_file']:
-                    msg = "Patch file not generated."
-                    E(" %s: %s\n %s" % (pkg_ctx['PN'], msg, stdout))
-                    pkg_ctx['error'] = Error(msg, stdout)
-                    fail = True
-                else:
-                    I(" %s: Save patch in directory: %s." %
-                        (pkg_ctx['PN'], pkg_ctx['workdir']))
+            if not pkg_ctx['patch_file']:
+                msg = "Patch file not generated."
+                E(" %s: %s\n %s" % (pkg_ctx['PN'], msg, stdout))
+                pkg_ctx['error'] = Error(msg, stdout)
+                fail = True
+            else:
+                I(" %s: Save patch in directory: %s." %
+                    (pkg_ctx['PN'], pkg_ctx['workdir']))
         except Error as e:
             msg = ''
 
@@ -568,7 +568,7 @@ class Updater(object):
                 for step, msg in upgrade_steps:
                     if msg is not None:
                         I(" %s: %s" % (pkg_ctx['PN'], msg))
-                    step(self.bb, self.git, self.opts, pkg_ctx)
+                    step(self.devtool, self.bb, self.git, self.opts, pkg_ctx)
                 succeeded_pkgs_ctx.append(pkg_ctx)
 
                 I(" %s: Upgrade SUCCESSFUL! Please test!" % pkg_ctx['PN'])

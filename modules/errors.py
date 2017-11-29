@@ -33,8 +33,11 @@ class Error(Exception):
 
 class MaintainerError(Error):
     """ Class for group error that can be sent to Maintainer's """
-    def __init__(self, message=None, stdout=None, stderr=None):
-        super(MaintainerError, self).__init__(message, stdout, stderr)
+
+class DevtoolError(Error):
+    """ Class for devtool errors """
+    def __str__(self):
+        return "Failed (devtool error)"
 
 class FetchError(Error):
     def __init__(self):
