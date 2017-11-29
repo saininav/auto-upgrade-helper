@@ -695,30 +695,6 @@ class UniverseUpdater(Updater):
 
         return recipes
 
-    def _update_master(self):
-        if self.opts['layer_mode'] == 'yes':
-            I(" Sync poky master ...")
-            self.poky_git.reset_hard()
-            self.poky_git.clean_untracked()
-            self.poky_git.checkout_branch("master")
-            self.poky_git.pull()
-
-        I(" Drop all uncommited changes (including untracked) ...")
-        self.git.reset_hard()
-        self.git.clean_untracked()
-
-        self.git.checkout_branch("master")
-        try:
-            self.git.delete_branch("upgrades")
-        except Error:
-            pass
-        if self.opts['layer_mode'] == 'yes':
-            I(" Sync %s master ..." % self.opts['layer_name'])
-        else:
-            I(" Sync poky master ...")
-        self.git.pull()
-        self.git.create_branch("upgrades")
-
     def _prepare(self):
         if settings.get("clean_sstate", "no") == "yes" and \
                 os.path.exists(os.path.join(get_build_dir(), "sstate-cache")):
@@ -857,7 +833,6 @@ class UniverseUpdater(Updater):
                 self._get_status_msg(pkg_ctx['error']))
 
     def run(self):
-        self._update_master()
         self._prepare()
         super(UniverseUpdater, self).run()
 
