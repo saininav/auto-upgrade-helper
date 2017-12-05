@@ -53,15 +53,6 @@ class TestImage():
         os.environ['BB_ENV_EXTRAWHITE'] = os.environ['BB_ENV_EXTRAWHITE'] + \
             " TEST_SUITES CORE_IMAGE_EXTRA_INSTALL"
 
-    def _get_ptest_pkgs(self, pkgs_ctx):
-        pkgs = []
-
-        for c in pkgs_ctx:
-            if "ptest" in c['recipe'].get_inherits():
-                pkgs.append(c)
-
-        return pkgs
-
     def _get_pkgs_to_install(self, pkgs, ptest=False):
         pkgs_out = []
 
@@ -149,7 +140,8 @@ class TestImage():
 
     def ptest(self, pkgs_ctx, machine):
         image = 'core-image-minimal'
-        ptest_pkgs = self._get_ptest_pkgs(pkgs_ctx)
+        # should use bitbake API here to trim down the list to only the recipes that inherit ptest
+        ptest_pkgs = pkgs_ctx
 
         os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
             self._get_pkgs_to_install(ptest_pkgs, ptest=True)
