@@ -75,33 +75,6 @@ class TestImage():
 
         return ' '.join(pkgs_out)
 
-    def prepare_branch(self, pkgs_ctx):
-        ok = False
-
-        try:
-            self.git.reset_hard()
-            self.git.checkout_branch("master")
-
-            try:
-                self.git.delete_branch("testimage")
-            except Error:
-                pass
-
-            self.git.create_branch("testimage")
-            for c in pkgs_ctx:
-                patch_file = os.path.join(c['workdir'], c['patch_file'])
-                try:
-                    self.git.apply_patch(patch_file)
-                except Exception as e:
-                    c['integration_error'] = e
-                    self.git.abort_patch()
-
-            ok = True
-        except Exception as e:
-            self._log_error(" testimage: Failed to prepare branch.")
-
-        return ok
- 
     def _parse_ptest_log(self, log_file):
         ptest_results = {}
 
@@ -284,8 +257,6 @@ class TestImage():
 
                 self.pkgs_ctx.remove(pkg_ctx)
 
-                if not self.prepare_branch(self.pkgs_ctx):
-                    handled = False
         else:
             handled = False
 
@@ -295,9 +266,6 @@ class TestImage():
         if len(self.pkgs_ctx) <= 0:
             I(" Testimage was enabled but any upgrade was successful.")
             return
-
-        if not self.prepare_branch(self.pkgs_ctx):
-           return
 
         I(" Images will test for %s." % ', '.join(self.opts['machines']))
         for machine in self.opts['machines']:
