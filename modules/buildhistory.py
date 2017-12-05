@@ -49,7 +49,7 @@ class BuildHistory(object):
         os.environ["BUILDHISTORY_DIR"] = self.buildhistory_dir
 
     def init(self, machines):
-        self.bb.cleanall(self.pn)
+        self.bb.cleansstate(self.pn)
         for machine in machines:
             self.bb.complete(self.pn, machine)
             self.revs.append(self.git.last_commit("master"))
