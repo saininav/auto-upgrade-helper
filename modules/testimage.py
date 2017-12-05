@@ -98,8 +98,10 @@ class TestImage():
             if name in files:
                 result.append(os.path.join(root, name))
 
+        D("Found logs named %s for machine %s: %s" %(name, machine, result))
         for ptest_log in result:
             if machine in ptest_log:
+                D("Picked log: %s" %(ptest_log))
                 return ptest_log
 
     def _get_failed_recipe(self, log):
