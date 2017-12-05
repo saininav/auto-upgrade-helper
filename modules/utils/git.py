@@ -40,7 +40,7 @@ class Git(object):
         try:
             stdout, stderr = bb.process.run(cmd)
         except bb.process.ExecutionError as e:
-            D("%s returned:\n%s" % (cmd, e.__str__()))
+            D("%s executed from %s returned:\n%s" % (cmd, self.repo_dir, e.__str__()))
             raise Error("The following git command failed: " + operation,
                         e.stdout, e.stderr)
 
