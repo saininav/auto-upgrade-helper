@@ -321,7 +321,7 @@ class Updater(object):
 
         mail_footer = \
             "Attached are the patch, license diff (if change) and bitbake log.\n" \
-            "Any problem please contact Anibal Limon <anibal.limon@intel.com>.\n\n" \
+            "Any problem please file a bug at https://bugzilla.yoctoproject.org/enter_bug.cgi?product=Automated%20Update%20Handler\n\n" \
             "Regards,\nThe Upgrade Helper"
 
         if pkg_ctx['MAINTAINER'] in maintainer_override:
