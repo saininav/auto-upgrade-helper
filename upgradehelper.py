@@ -691,11 +691,11 @@ class UniverseUpdater(Updater):
                     pkgs_list.append((pn, cur_ver, next_ver, maintainer, revision))
                 else:
                     if no_upgrade_reason:
-                        D(" Skip package %s (status = %s, current version = %s," \
+                        I(" Skip package %s (status = %s, current version = %s," \
                             " next version = %s, no upgrade reason = %s)" %
                             (pn, status, cur_ver, next_ver, no_upgrade_reason))
                     else:
-                        D(" Skip package %s (status = %s, current version = %s," \
+                        I(" Skip package %s (status = %s, current version = %s," \
                             " next version = %s)" %
                             (pn, status, cur_ver, next_ver))
         return pkgs_list
