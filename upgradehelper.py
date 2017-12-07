@@ -756,7 +756,10 @@ class UniverseUpdater(Updater):
 
         pkgs_list = []
         for pkg in self._parse_checkpkg_file(last_checkpkg_file):
-            if self._pkg_upgradable(pkg[0], pkg[1], pkg[2]):
+            # Always do the upgrade if recipes are specified
+            if self.recipes and pkg[0] in self.recipes:
+                pkgs_list.append(pkg)
+            elif self._pkg_upgradable(pkg[0], pkg[1], pkg[2]):
                 pkgs_list.append(pkg)
 
         return pkgs_list
