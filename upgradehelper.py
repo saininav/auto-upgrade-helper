@@ -129,11 +129,12 @@ def parse_config_file(config_file):
     return (settings, maintainer_override)
 
 class Updater(object):
-    def __init__(self, auto_mode=False, send_email=False, skip_compilation=False):
+    def __init__(self, args):
         build_dir = get_build_dir()
 
         self.bb = Bitbake(build_dir)
         self.devtool = Devtool()
+        self.args = args
 
         try:
             self.base_env = self.bb.env()
@@ -143,7 +144,7 @@ class Updater(object):
             E( " Bitbake output:\n%s" % (e.stdout))
             exit(1)
 
-        self._set_options(auto_mode, send_email, skip_compilation)
+        self._set_options()
 
         self._make_dirs(build_dir)
 
@@ -152,7 +153,7 @@ class Updater(object):
         self.email_handler = Email(settings)
         self.statistics = Statistics()
 
-    def _set_options(self, auto_mode, send_email, skip_compilation):
+    def _set_options(self):
         self.opts = {}
         self.opts['layer_mode'] = settings.get('layer_mode', '')
         if self.opts['layer_mode'] == 'yes':
@@ -176,11 +177,11 @@ class Updater(object):
             self.opts['machines'] = settings.get('machines',
                 'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
 
-        self.opts['interactive'] = not auto_mode
-        self.opts['send_email'] = send_email
+        self.opts['interactive'] = not self.args.auto_mode
+        self.opts['send_email'] = self.args.send_emails
         self.opts['author'] = "Upgrade Helper <%s>" % \
                 settings.get('from', 'uh@not.set')
-        self.opts['skip_compilation'] = skip_compilation
+        self.opts['skip_compilation'] = self.args.skip_compilation
         self.opts['buildhistory'] = self._buildhistory_is_enabled()
         self.opts['testimage'] = self._testimage_is_enabled()
 
@@ -576,17 +577,25 @@ class Updater(object):
                 self.send_status_mail(statistics_summary)
 
 class UniverseUpdater(Updater):
-    def __init__(self, recipes=None):
-        Updater.__init__(self, True, True)
+    def __init__(self, args):
+        Updater.__init__(self, args)
+
+        if len(args.recipe) == 1 and args.recipe[0] == "all":
+            self.recipes = []
+        else:
+            self.recipes = args.recipe
 
         # to filter recipes in upgrade
-        if not recipes and self.opts['layer_mode'] == 'yes':
+        if not self.recipes and self.opts['layer_mode'] == 'yes':
             # when layer mode is enabled and no recipes are specified
             # we need to figure out what recipes are provided by the
             # layer to try upgrade
             self.recipes = self._get_recipes_by_layer()
-        else:
-            self.recipes = recipes
+
+        if args.to_version:
+            if len(self.recipes) != 1:
+                E(" -t is only supported when upgrade one recipe\n")
+                exit(1)
 
         # read history file
         self.history_file = os.path.join(get_build_dir(), "upgrade-helper", "history.uh")
@@ -665,10 +674,16 @@ class UniverseUpdater(Updater):
 
                 pn = row[0]
                 cur_ver = row[1]
-                next_ver = row[2]
+                if self.args.to_version:
+                    next_ver = self.args.to_version
+                else:
+                    next_ver = row[2]
                 status = row[11]
                 revision = row[12]
-                maintainer = row[14]
+                if self.args.maintainer:
+                    maintainer = self.args.maintainer
+                else:
+                    maintainer = row[14]
                 no_upgrade_reason = row[15]
 
                 if status == 'UPDATE' and not no_upgrade_reason:
@@ -792,28 +807,5 @@ if __name__ == "__main__":
                     level=debug_levels[args.debug_level - 1])
     settings, maintainer_override = parse_config_file(args.config_file)
 
-    recipes = args.recipe
-
-    if len(recipes) == 1 and recipes[0] == "all":
-        updater = UniverseUpdater()
-        updater.run()
-    elif len(recipes) == 1 and args.to_version:
-        if not args.maintainer and args.send_emails:
-            E(" For upgrade one recipe and send email you must specify --maintainer\n")
-            exit(1)
-
-        if not args.maintainer:
-            args.maintainer = "Upgrade Helper <%s>" % \
-                settings.get('from', 'uh@not.set')
-
-        pkg_list = [(recipes[0], args.to_version, args.maintainer)]
-        updater = Updater(args.auto_mode, args.send_emails, args.skip_compilation)
-        updater.run(pkg_list)
-    elif len(recipes) > 1 and args.to_version:
-        E(" -t is only supported when upgrade one recipe\n")
-        exit(1)
-    else:
-        updater = UniverseUpdater(recipes)
-        updater.run()
-
-
+    updater = UniverseUpdater(args)
+    updater.run()
