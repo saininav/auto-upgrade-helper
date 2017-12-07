@@ -113,7 +113,7 @@ def _compile(bb, pkg, machine, workdir):
 
 def compile(devtool, bb, git, opts, pkg_ctx):
     if opts['skip_compilation']:
-        W(" %s: Compilation was skipped by user choice!")
+        W(" %s: Compilation was skipped by user choice!" % pkg_ctx['PN'])
         return
 
     for machine in opts['machines']:
