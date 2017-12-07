@@ -150,7 +150,8 @@ class Updater(object):
 
         self._add_file_logger()
 
-        self.email_handler = Email(settings)
+        if self.args.send_emails:
+            self.email_handler = Email(settings)
         self.statistics = Statistics()
 
     def _set_options(self):
