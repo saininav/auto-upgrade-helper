@@ -468,7 +468,7 @@ class Updater(object):
             pkgs_ctx[p]['base_dir'] = self.uh_recipes_all_dir
         I(" ############################################################")
 
-        if pkgs_to_upgrade:
+        if pkgs_to_upgrade and not self.args.skip_compilation:
             I(" Building gcc runtimes ...")
             for machine in self.opts['machines']:
                 I("  building gcc runtime for %s" % machine)
