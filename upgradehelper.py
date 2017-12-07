@@ -646,7 +646,7 @@ class UniverseUpdater(Updater):
             self.bb.checkpkg(recipe)
         except Error as e:
             for line in e.stdout.split('\n'):
-                if line.find("ERROR: Task do_checkpkg does not exist") == 0:
+                if line.find("ERROR: Task do_checkpkg does not exist") != -1:
                     C(" \"distrodata.bbclass\" not inherited. Consider adding "
                       "the following to your local.conf:\n\n"
                       "INHERIT =+ \"distrodata\"\n")
