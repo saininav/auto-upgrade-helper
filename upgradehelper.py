@@ -75,7 +75,7 @@ def parse_cmdline():
     parser = argparse.ArgumentParser(description='Package Upgrade Helper',
                                      formatter_class=argparse.RawTextHelpFormatter,
                                      epilog=help_text)
-    parser.add_argument("recipe", help="recipe to be upgraded")
+    parser.add_argument("recipe", nargs = '+', action='store', default='', help="recipe to be upgraded")
 
     parser.add_argument("-t", "--to_version",
                         help="version to upgrade the recipe to")
@@ -792,7 +792,7 @@ if __name__ == "__main__":
                     level=debug_levels[args.debug_level - 1])
     settings, maintainer_override = parse_config_file(args.config_file)
 
-    recipes = args.recipe.split()
+    recipes = args.recipe
 
     if len(recipes) == 1 and recipes[0] == "all":
         updater = UniverseUpdater()
@@ -806,9 +806,12 @@ if __name__ == "__main__":
             args.maintainer = "Upgrade Helper <%s>" % \
                 settings.get('from', 'uh@not.set')
 
-        pkg_list = [(args.recipe, args.to_version, args.maintainer)]
+        pkg_list = [(recipes[0], args.to_version, args.maintainer)]
         updater = Updater(args.auto_mode, args.send_emails, args.skip_compilation)
         updater.run(pkg_list)
+    elif len(recipes) > 1 and args.to_version:
+        E(" -t is only supported when upgrade one recipe\n")
+        exit(1)
     else:
         updater = UniverseUpdater(recipes)
         updater.run()
