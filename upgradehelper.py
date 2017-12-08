@@ -380,8 +380,7 @@ class Updater(object):
             if os.path.isfile(attachment_fullpath):
                 attachments.append(attachment_fullpath)
 
-        # Only send email to Maintainer when recipe upgrade succeed.
-        if self.opts['send_email'] and not pkg_ctx['error']:
+        if self.opts['send_email']:
             self.email_handler.send_email(to_addr, subject, msg_body, attachments, cc_addr=cc_addr)
         # Preserve email for review purposes.
         email_file = os.path.join(pkg_ctx['workdir'],
