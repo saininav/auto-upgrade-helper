@@ -294,19 +294,20 @@ class Updater(object):
             "to upgrade the recipe to *%s* has %s.\n\n"
 
         license_change_info = \
-            "*LICENSE CHANGED* please review the %s file and update the LICENSE\n" \
-            "variable in the recipe if is needed.\n\n"
+            "*LICENSE CHANGED* please review the %s file, update the LICENSE\n" \
+            "variable in the recipe and summarize the changes in the commit message.\n\n"
 
         next_steps_info = \
-            "The recipe has been successfully compiled for machines %s.\n\n" \
             "Next steps:\n" \
             "    - apply the patch: git am %s\n" \
-            "    - check that required upstream patches have not been commented from the recipe,\n" \
-            "      if upstream patches were commented the reason is specified in the commit message.\n" \
+            "    - check the changes to upstream patches and summarize them in the commit message,\n" \
             "    - compile an image that contains the package\n" \
             "    - perform some basic sanity tests\n" \
             "    - amend the patch and sign it off: git commit -s --reset-author --amend\n" \
-            "    - send it to the list\n\n" \
+            "    - send it to the appropriate mailing list\n\n" \
+            "Alternatively, if you believe the recipe should not be upgraded at this time,\n" \
+            "you can fill RECIPE_NO_UPDATE_REASON in respective recipe file so that\n" \
+            "automatic upgrades would no longer be attempted.\n\n"
 
         testimage_integration_error = \
             "The recipe *FAILED* in testimage integration. Attached is the log file.\n\n"
@@ -320,7 +321,7 @@ class Updater(object):
             "the next machines %s. Attached is the log file.\n\n" \
 
         mail_footer = \
-            "Attached are the patch, license diff (if change) and bitbake log.\n" \
+            "Please review the attached files for further information and build/update failures.\n" \
             "Any problem please file a bug at https://bugzilla.yoctoproject.org/enter_bug.cgi?product=Automated%20Update%20Handler\n\n" \
             "Regards,\nThe Upgrade Helper"
 
@@ -333,20 +334,30 @@ class Updater(object):
         if "status_recipients" in settings:
             cc_addr = settings["status_recipients"].split()
 
-        subject = "[AUH] " + pkg_ctx['PN'] + ": upgrading to " + pkg_ctx['NPV']
+        newversion = pkg_ctx['NPV'] if not pkg_ctx['NPV'].endswith("new-commits-available") else pkg_ctx['NSRCREV']
+        subject = "[AUH] " + pkg_ctx['PN'] + ": upgrading to " + newversion
         if not pkg_ctx['error']:
             subject += " SUCCEEDED"
         else:
             subject += " FAILED"
-        msg_body = mail_header % (pkg_ctx['PN'], pkg_ctx['NPV'],
+        msg_body = mail_header % (pkg_ctx['PN'], newversion,
                 self._get_status_msg(pkg_ctx['error']))
-        if 'recipe' in pkg_ctx:
-            license_diff_fn = pkg_ctx['recipe'].get_license_diff_file_name()
-            if license_diff_fn:
-                msg_body += license_change_info % license_diff_fn
-        if not pkg_ctx['error']:
-            msg_body += next_steps_info % (', '.join(self.opts['machines']),
-                    os.path.basename(pkg_ctx['patch_file']))
+
+        if pkg_ctx['error'] is not None:
+            msg_body += """Detailed error information:
+
+%s
+%s
+%s
+
+""" %(pkg_ctx['error'].message if pkg_ctx['error'].message else "", pkg_ctx['error'].stdout if pkg_ctx['error'].stdout else "" , pkg_ctx['error'].stderr if pkg_ctx['error'].stderr else "")
+
+        if 'license_diff_fn' in pkg_ctx:
+            license_diff_fn = pkg_ctx['license_diff_fn']
+            msg_body += license_change_info % license_diff_fn
+
+        if 'patch_file' in pkg_ctx and pkg_ctx['patch_file'] != None:
+            msg_body += next_steps_info % (os.path.basename(pkg_ctx['patch_file']))
 
         if self.opts['testimage']:
             if 'integration_error' in pkg_ctx:
