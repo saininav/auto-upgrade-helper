@@ -397,7 +397,6 @@ class Updater(object):
             f.write("\n%s\n" % msg_body)
 
     def commit_changes(self, pkg_ctx):
-        fail = False
         try:
             pkg_ctx['patch_file'] = None
 
@@ -411,8 +410,7 @@ class Updater(object):
             if not pkg_ctx['patch_file']:
                 msg = "Patch file not generated."
                 E(" %s: %s\n %s" % (pkg_ctx['PN'], msg, stdout))
-                pkg_ctx['error'] = Error(msg, stdout)
-                fail = True
+                raise Error(msg, stdout)
             else:
                 I(" %s: Save patch in directory: %s." %
                     (pkg_ctx['PN'], pkg_ctx['workdir']))
@@ -425,12 +423,7 @@ class Updater(object):
                     I(" %s: %s" % (pkg_ctx['PN'], msg))
 
             I(" %s: %s" % (pkg_ctx['PN'], e.stdout))
-
-            pkg_ctx['error'] = Error(msg, e.stdout)
-            fail = True
-
-        if fail:
-            raise pkg_ctx['error']
+            raise e
 
     def send_status_mail(self, statistics_summary):
         if "status_recipients" not in settings:
