@@ -402,6 +402,7 @@ class Updater(object):
             pkg_ctx['patch_file'] = None
 
             I(" %s: Auto commit changes ..." % pkg_ctx['PN'])
+            self.git.add(pkg_ctx['recipe_dir'])
             self.git.commit(pkg_ctx['commit_msg'], self.opts['author'])
 
             stdout = self.git.create_patch(pkg_ctx['workdir'])

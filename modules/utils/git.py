@@ -52,6 +52,9 @@ class Git(object):
     def stash(self):
         return self._cmd("stash")
 
+    def add(self, src):
+        return self._cmd("add " + src)
+
     def commit(self, commit_message, author=None):
         if author is None:
             return self._cmd("commit -a -s -m \"" + commit_message + "\"")
