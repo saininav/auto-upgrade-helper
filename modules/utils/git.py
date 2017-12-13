@@ -61,6 +61,9 @@ class Git(object):
         else:
             return self._cmd("commit -a --author=\"" + author + "\" -m \"" + commit_message + "\"")
 
+    def revert(self, commit):
+        return self._cmd("revert --no-edit " + commit)
+
     def create_patch(self, out_dir):
         return self._cmd("format-patch -M10 -1 -o " + out_dir)
 

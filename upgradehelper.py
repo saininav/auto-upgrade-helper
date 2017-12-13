@@ -414,6 +414,9 @@ class Updater(object):
             else:
                 I(" %s: Save patch in directory: %s." %
                     (pkg_ctx['PN'], pkg_ctx['workdir']))
+            if pkg_ctx['error'] is not None:
+                I("Due to build errors, the commit will also be reverted to avoid cascading upgrade failures.")
+                self.git.revert("HEAD")
         except Error as e:
             msg = ''
 
