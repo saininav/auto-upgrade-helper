@@ -510,7 +510,7 @@ class Updater(object):
 
                     E(" %s: %s" % (pkg_ctx['PN'], e.message))
 
-                    if os.listdir(pkg_ctx['workdir']):
+                    if 'workdir' in pkg_ctx and os.listdir(pkg_ctx['workdir']):
                         E(" %s: Upgrade FAILED! Logs and/or file diffs are available in %s"
                             % (pkg_ctx['PN'], pkg_ctx['workdir']))
 
