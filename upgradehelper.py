@@ -60,7 +60,7 @@ from steps import upgrade_steps
 from testimage import TestImage
 
 help_text = """Usage examples:
-* To upgrade xmodmap recipe to the latest available version, interactively:
+* To upgrade xmodmap recipe to the latest available version:
     $ upgrade-helper.py xmodmap
 
 * To attempt to upgrade all recipes and automatically send email messages
@@ -81,9 +81,6 @@ def parse_cmdline():
                         help="version to upgrade the recipe to")
     parser.add_argument("-m", "--maintainer",
                         help="maintainer of the recipe")
-
-    parser.add_argument("-a", "--auto-mode", action="store_true", default=False,
-                        help="disable interactive mode")
 
     parser.add_argument("-d", "--debug-level", type=int, default=4, choices=range(1, 6),
                         help="set the debug level: CRITICAL=1, ERROR=2, WARNING=3, INFO=4, DEBUG=5")
@@ -178,7 +175,6 @@ class Updater(object):
             self.opts['machines'] = settings.get('machines',
                 'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
 
-        self.opts['interactive'] = not self.args.auto_mode
         self.opts['send_email'] = self.args.send_emails
         self.opts['author'] = "Upgrade Helper <%s>" % \
                 settings.get('from', 'uh@not.set')

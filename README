@@ -134,12 +134,10 @@ Usage
 
 Some manual usage examples:
 
-* To upgrade the xmodmap recipe to the latest available version,
-  interactively:
+* To upgrade the xmodmap recipe to the latest available version:
     $ upgrade-helper.py xmodmap
 
-* To upgrade the xmodmap recipe to a user specified version,
-  interactively:
+* To upgrade the xmodmap recipe to a user specified version:
     $ upgrade-helper.py xmodmap -t 1.2.3
 
 * To attempt to upgrade all recipes and automatically send email
