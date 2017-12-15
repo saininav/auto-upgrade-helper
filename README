@@ -28,6 +28,7 @@ Setup
 --------------- snip ---------------
 [maintainer_override]
 # mails for recipe upgrades will go to john.doe instead of jane.doe, etc
+# see also the global_maintainer_override option
 jane.doe@doe.com=john.doe@doe.com
 johhny.bravo@bravo.com=john.doe@doe.com
 
@@ -37,6 +38,10 @@ blacklist=python glibc gcc
 
 # only recipes belonging to maintainers in whitelist will be attempted
 maintainers_whitelist=jane.doe@doe.com john.doe@doe.com johhny.bravo@bravo.com
+
+# email for all recipe upgrades will go to john.doe, except those listed
+# in specific maintainer_override entries above
+global_maintainer_override=john.doe@doe.com
 
 # SMTP server
 smtp=smtp.my-server.com:25
@@ -84,7 +89,7 @@ INHERIT =+ "distrodata"
 
 WARNING: if you are using the default maintainers.inc file supplied
          with Poky (in meta-yocto) and you don't set a
-         maintainers_whitelist or maintainer_override in the
+         maintainers_whitelist or (global_)maintainer_override in the
          upgrade-helper configuration as above, and you specify "all"
          on the command line, the script will automatically send out
          emails to the default maintainers. Please be careful not to

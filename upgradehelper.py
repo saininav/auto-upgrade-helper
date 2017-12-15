@@ -79,8 +79,6 @@ def parse_cmdline():
 
     parser.add_argument("-t", "--to_version",
                         help="version to upgrade the recipe to")
-    parser.add_argument("-m", "--maintainer",
-                        help="maintainer of the recipe")
 
     parser.add_argument("-d", "--debug-level", type=int, default=4, choices=range(1, 6),
                         help="set the debug level: CRITICAL=1, ERROR=2, WARNING=3, INFO=4, DEBUG=5")
@@ -325,6 +323,8 @@ class Updater(object):
 
         if pkg_ctx['MAINTAINER'] in maintainer_override:
             to_addr = maintainer_override[pkg_ctx['MAINTAINER']]
+        elif 'global_maintainer_override' in settings:
+            to_addr = settings['global_maintainer_override']
         else:
             to_addr = pkg_ctx['MAINTAINER']
 
@@ -677,10 +677,7 @@ class UniverseUpdater(Updater):
                     next_ver = row[2]
                 status = row[11]
                 revision = row[12]
-                if self.args.maintainer:
-                    maintainer = self.args.maintainer
-                else:
-                    maintainer = row[14]
+                maintainer = row[14]
                 no_upgrade_reason = row[15]
 
                 if status == 'UPDATE' and not no_upgrade_reason:
