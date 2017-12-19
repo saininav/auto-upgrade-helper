@@ -7,11 +7,23 @@
 #
 # 00 8   * * 6   auh  /home/auh/bin/weeklyjob.sh
 
+# Re-assign these to match your setup!
 auh_dir=~/auto-upgrade-helper
 poky_dir=~/poky
 build_dir=~/build
+sstate_dir=~/sstate-cache
+
+pushd $poky_dir
+
+# Base the upgrades on poky master
+git fetch origin
+git checkout -B tmp-auh-upgrades origin/master
 
 source $poky_dir/oe-init-build-env $build_dir
 $auh_dir/upgradehelper.py all
 
-#/usr/bin/rsync --delete --password-file /home/auh/rsync.passwd --copy-unsafe-links -zaHS /home/auh/work/ auh@downloads.yoctoproject.org::auh/
+# clean up to avoid the disk filling up
+rm -rf $build_dir/tmp/
+find $sstate_dir -atime +10 -delete
+
+popd
