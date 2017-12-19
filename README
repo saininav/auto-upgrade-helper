@@ -65,7 +65,9 @@ clean_sstate=yes
 clean_tmp=yes
 
 # machines to test build with
-machines=qemux86 qemux86-64 qemuarm qemumips qemuppc
+# append _libc-name to test with alternative C library implementations
+# e.g. qemux86_musl
+machines=qemux86 qemux86_musl qemux86-64 qemuarm qemumips qemuppc
 
 # optional features
 buildhistory=no

@@ -171,7 +171,7 @@ class Updater(object):
             self.git = Git(os.path.dirname(os.getenv('PATH', False).split(':')[0]))
             self.poky_git = None
             self.opts['machines'] = settings.get('machines',
-                'qemux86 qemux86-64 qemuarm qemumips qemuppc').split()
+                'qemux86 qemux86-64 qemuarm qemumips qemuppc qemux86_musl').split()
 
         self.opts['send_email'] = self.args.send_emails
         self.opts['author'] = "Upgrade Helper <%s>" % \

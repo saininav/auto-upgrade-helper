@@ -121,7 +121,12 @@ class Bitbake(object):
         return self._cmd(recipe, "-c cleansstate")
 
     def complete(self, recipe, machine):
-        return self._cmd(recipe, env_var="MACHINE=" + machine)
+        if "_" in machine:
+            machine, libc = machine.split("_")
+            env = "MACHINE={} TCLIBC={}".format(machine, libc)
+        else:
+            env = "MACHINE={}".format(machine)
+        return self._cmd(recipe, env_var=env)
 
     def dependency_graph(self, package_list):
         return self._cmd(package_list, "-g")
