@@ -10,7 +10,7 @@
 # Re-assign these to match your setup!
 auh_dir=~/auto-upgrade-helper
 poky_dir=~/poky
-build_dir=~/build
+build_dir=~/build-tmp-auh-upgrades
 sstate_dir=~/sstate-cache
 
 pushd $poky_dir

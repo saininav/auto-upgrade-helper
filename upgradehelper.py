@@ -788,6 +788,8 @@ if __name__ == "__main__":
 
     if not os.getenv('BUILDDIR', False):
         E(" You must source oe-init-build-env before running this script!\n")
+        E(" It is recommended to create a fresh build directory with it:\n")
+        E(" $ . oe-init-build-env build-auh\n")
         exit(1)
 
     devnull = open(os.devnull, 'wb')
@@ -795,6 +797,18 @@ if __name__ == "__main__":
         subprocess.call(["git", "config", "user.email"], stdout=devnull, stderr=devnull):
         E(" Git isn't configured please configure user name and email\n")
         exit(1)
+
+    with open(os.getenv('BUILDDIR')+"/conf/local.conf") as f:
+        import re
+        for line in f.readlines():
+            if re.match(r"^MACHINE\s*=", line):
+                E(" The following line found in local.conf - please use ?= or ?== instead as otherwise AUH will not be able to set the desired target machine\n")
+                E(" {}".format(line))
+                exit(1)
+            if re.match(r"^TCLIBC\s*=", line):
+                E(" The following line found in local.conf - please use ?= or ?== instead as otherwise AUH will not be able to set the desired C library\n")
+                E(" {}".format(line))
+                exit(1)
 
     signal.signal(signal.SIGINT, close_child_processes)
 

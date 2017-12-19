@@ -17,10 +17,14 @@ Setup
    $ git config --global user.name "Some Name"
    $ git config --global user.email "somename@somedomain.com"
 
-1. Ensure you have a working copy of the build system that is configured
-   and ready to run, i.e. you've run the oe-init-build-env script to
-   create a build directory and edited local.conf / bblayers.conf as
-   desired.
+1. Run the oe-init-build-env script to create a fresh build directory, solely
+   for the purpose of running AUH:
+
+   $ . ./oe-init-build-env build-auh
+
+   Re-using existing build directories and configurations is not recommended
+   as they may contains tweaks that will break AUH or make it behave in
+   undesirable ways.
 
 2. Prepare a configuration file, by default in $BUILDDIR/upgrade-helper/
    upgrade-helper.conf, as below:
