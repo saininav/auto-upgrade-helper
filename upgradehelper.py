@@ -555,9 +555,11 @@ class Updater(object):
                     os.path.basename(self.uh_work_dir) + '.tar.gz')
             if publish_work_url:
                 I(" Generating work tarball in %s ..." % work_tarball)
+                tar_cmd = ["tar", "-chzf", work_tarball, "-C", self.uh_base_work_dir, os.path.basename(self.uh_work_dir)]
                 import subprocess
-                if subprocess.call(["tar", "-chzf", work_tarball, self.uh_work_dir]):
+                if subprocess.call(tar_cmd):
                     E(" Work tarball (%s) generation failed..." % (work_tarball))
+                    E(" Tar command: %s" % (" ".join(tar_cmd)))
                     publish_work_url = ''
 
             statistics_summary = self.statistics.get_summary(
