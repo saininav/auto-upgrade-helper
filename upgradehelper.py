@@ -290,17 +290,6 @@ class Updater(object):
             "you can fill RECIPE_NO_UPDATE_REASON in respective recipe file so that\n" \
             "automatic upgrades would no longer be attempted.\n\n"
 
-        testimage_integration_error = \
-            "The recipe *FAILED* in testimage integration. Attached is the log file.\n\n"
-
-        testimage_ptest_info = \
-            "The recipe has ptest enabled and has been tested with core-image-minimal/ptest \n" \
-            "with the next machines %s. Attached is the log file.\n\n"
-
-        testimage_info = \
-            "The recipe has been tested using %s testimage and succeeded with \n" \
-            "the next machines %s. Attached is the log file.\n\n" \
-
         mail_footer = \
             "Please review the attached files for further information and build/update failures.\n" \
             "Any problem please file a bug at https://bugzilla.yoctoproject.org/enter_bug.cgi?product=Automated%20Update%20Handler\n\n" \
@@ -341,18 +330,6 @@ class Updater(object):
 
         if 'patch_file' in pkg_ctx and pkg_ctx['patch_file'] != None:
             msg_body += next_steps_info % (os.path.basename(pkg_ctx['patch_file']))
-
-        if self.opts['testimage']:
-            if 'integration_error' in pkg_ctx:
-                msg_body += testimage_integration_error
-            else:
-                if 'ptest' in pkg_ctx:
-                    machines = pkg_ctx['ptest'].keys()
-                    msg_body += testimage_ptest_info % machines
-                if 'testimage' in pkg_ctx:
-                    machines = pkg_ctx['testimage'].keys()
-                    msg_body += testimage_info % (settings.get('testimage_name', \
-                        DEFAULT_TESTIMAGE), machines)
 
         msg_body += mail_footer
 
