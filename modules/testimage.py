@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # vim: set ts=4 sw=4 et:
 #
 # Copyright (c) 2015 Intel Corporation
@@ -42,13 +41,13 @@ def _pn_in_pkgs_ctx(pn, pkgs_ctx):
     return None
 
 class TestImage():
-    def __init__(self, bb, git, uh_work_dir, opts, *args, **kwargs):
+    def __init__(self, bb, git, uh_work_dir, opts, packages, image):
         self.bb = bb
         self.git = git
         self.uh_work_dir = uh_work_dir
         self.opts = opts
-        self.pkgs_ctx = args[0]['succeeded'][:]
-        self.image = args[1]
+        self.pkgs_ctx = packages['succeeded']
+        self.image = image
 
         os.environ['BB_ENV_EXTRAWHITE'] = os.environ['BB_ENV_EXTRAWHITE'] + \
             " TEST_SUITES CORE_IMAGE_EXTRA_INSTALL"
