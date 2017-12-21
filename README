@@ -68,9 +68,12 @@ clean_sstate=yes
 # clean tmp directory before upgrading
 clean_tmp=yes
 
-# machines to test build with
-# append _libc-name to test with alternative C library implementations
-# e.g. qemux86_musl
+# Machines to test build with.
+# Append _libc-name to test with alternative C library implementations
+# e.g. qemux86_musl.
+#
+# Buildhistory and testimages will be created only for the first
+# machine in the list, as otherwise it adds enormously to AUH run time.
 machines=qemux86 qemux86_musl qemux86-64 qemuarm qemumips qemuppc
 
 # optional features

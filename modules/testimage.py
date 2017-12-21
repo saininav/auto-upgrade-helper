@@ -139,46 +139,6 @@ class TestImage():
                         raise IntegrationError(e.stdout, pkg_ctx)
         raise e
 
-    def ptest(self, pkgs_ctx, machine):
-        image = 'core-image-minimal'
-        # should use bitbake API here to trim down the list to only the recipes that inherit ptest
-        ptest_pkgs = pkgs_ctx
-
-        os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
-            self._get_pkgs_to_install(ptest_pkgs, ptest=True)
-        I( "   building %s for %s ..." % (image, machine))
-        try:
-            self.bb.complete(image, machine)
-        except Error as e:
-            self._handle_image_build_error(image, pkgs_ctx, e)
-
-        os.environ['TEST_SUITES'] = "ping ssh _ptest"
-        I( "   running %s/ptest for %s ..." % (image, machine))
-        self.bb.complete("%s -c testimage" % image, machine)
-
-        ptest_log_file = self._find_log("ptest.log", machine)
-        shutil.copyfile(ptest_log_file,
-                os.path.join(self.uh_work_dir, "ptest_%s.log" % machine))
-
-        ptest_result = self._parse_ptest_log(ptest_log_file)
-        for pn in ptest_result:
-            for pkg_ctx in pkgs_ctx:
-                if not pn == pkg_ctx['PN']:
-                    continue 
-
-                if not 'ptest' in pkg_ctx:
-                    pkg_ctx['ptest'] = {}
-                if not 'ptest_log' in pkg_ctx:
-                    pkg_ctx['ptest_log'] = os.path.join(pkg_ctx['workdir'],
-                        "ptest.log")
-
-                pkg_ctx['ptest'][machine] = True
-                with open(pkg_ctx['ptest_log'], "a+") as f:
-                    f.write("BEGIN: PTEST for %s\n" % machine)
-                    for line in ptest_result[pn]:
-                        f.write(line)
-                    f.write("END: PTEST for %s\n" % machine)
-
     def testimage(self, pkgs_ctx, machine, image):
         os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
             self._get_pkgs_to_install(pkgs_ctx)
@@ -213,68 +173,7 @@ class TestImage():
                         of.write(line)
                     of.write("END: TESTIMAGE for %s\n" % machine)
 
-    def _log_error(self, e):
-        if isinstance(e, Error):
-            E(" %s" % e.stdout)
-        else:
-            import traceback
-            tb = traceback.format_exc()
-            E("%s" % tb)
-
-    def _handle_error(self, e, machine):
-        handled = True
-
-        if isinstance(e, IntegrationError):
-            pkg_ctx = e.pkg_ctx
-
-            E("   %s on machine %s failed in integration, removing..."
-                % (pkg_ctx['PN'], machine))
-
-            with open(os.path.join(pkg_ctx['workdir'],
-                'integration_error.log'), 'a+') as f:
-                f.write(e.stdout)
-
-            if not pkg_ctx in self.pkgs_ctx:
-                E("   Infinite loop IntegrationError trying to " \
-                   "remove %s twice, see logs.", pkg_ctx['PN'])
-                handled = False
-            else:
-                pkg_ctx['integration_error'] = e
-
-                # remove previous build tmp, sstate to avoid QA errors
-                # on lower versions
-                I("     removing sstate directory ...")
-                shutil.rmtree(os.path.join(get_build_dir(), "sstate-cache"))
-                I("     removing tmp directory ...")
-                shutil.rmtree(os.path.join(get_build_dir(), "tmp"))
-
-                self.pkgs_ctx.remove(pkg_ctx)
-
-        else:
-            handled = False
-
-        return handled
-
     def run(self):
-        I(" Images will test for %s." % ', '.join(self.opts['machines']))
-        for machine in self.opts['machines']:
-            I("  Testing images for %s ..." % machine)
-            while True:
-                try:
-                    self.ptest(self.pkgs_ctx, machine)
-                    break
-                except Exception as e:
-                    if not self._handle_error(e, machine):
-                        E(" %s/testimage on machine %s failed" % (self.image, machine))
-                        self._log_error(e)
-                        break
-
-            while True:
-                try:
-                    self.testimage(self.pkgs_ctx, machine, self.image)
-                    break
-                except Exception as e:
-                    if not self._handle_error(e, machine):
-                        E(" %s/testimage on machine %s failed" % (self.image, machine))
-                        self._log_error(e)
-                        break
+        machine = self.opts['machines'][0]
+        I("  Testing image for %s ..." % machine)
+        self.testimage(self.pkgs_ctx, machine, self.image)
