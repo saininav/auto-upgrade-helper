@@ -49,8 +49,11 @@ class TestImage():
         self.pkgs_ctx = packages['succeeded']
         self.image = image
 
+        self.logdir = os.path.join(uh_work_dir, "testimage-logs")
+        os.mkdir(self.logdir)
+
         os.environ['BB_ENV_EXTRAWHITE'] = os.environ['BB_ENV_EXTRAWHITE'] + \
-            " CORE_IMAGE_EXTRA_INSTALL"
+            " CORE_IMAGE_EXTRA_INSTALL TEST_LOG_DIR TESTIMAGE_UPDATE_VARS"
 
     def _get_pkgs_to_install(self, pkgs):
         pkgs_out = []
@@ -70,13 +73,33 @@ class TestImage():
     def testimage(self, pkgs_ctx, machine, image):
         os.environ['CORE_IMAGE_EXTRA_INSTALL'] = \
             self._get_pkgs_to_install(pkgs_ctx)
+        os.environ['TEST_LOG_DIR'] = self.logdir
+        os.environ['TESTIMAGE_UPDATE_VARS'] = 'TEST_LOG_DIR'
         I( " Installing additional packages to the image: {}".format(os.environ['CORE_IMAGE_EXTRA_INSTALL']))
 
         I( "   building %s for %s ..." % (image, machine))
-        self.bb.complete(image, machine)
+        bitbake_create_output = ""
+        bitbake_run_output = ""
+        try:
+            bitbake_create_output = self.bb.complete(image, machine)
+        except Error as e:
+            I( "   building the testimage failed! Collecting logs...")
+            bitbake_create_output = e.stdout
+        else:
+            I( "   running %s/testimage for %s ..." % (image, machine))
+            try:
+                bitbake_run_output = self.bb.complete("%s -c testimage" % image, machine)
+            except Error as e:
+                I( "   running the testimage failed! Collecting logs...")
+                bitbake_run_output = e.stdout
 
-        I( "   running %s/testimage for %s ..." % (image, machine))
-        self.bb.complete("%s -c testimage" % image, machine)
+        if bitbake_create_output:
+            with open(os.path.join(self.logdir, "bitbake-create-testimage.log"), 'w') as f:
+                f.write(bitbake_create_output)
+        if bitbake_run_output:
+            with open(os.path.join(self.logdir, "bitbake-run-testimage.log"), 'w') as f:
+                f.write(bitbake_run_output)
+        I(" All done! Testimage/ptest/qemu logs are collected to {}".format(self.logdir))
 
     def run(self):
         machine = self.opts['machines'][0]
