@@ -122,10 +122,8 @@ file:
 --------------- snip ---------------
 INHERIT += "testimage"
 
-DISTRO_FEATURES_append = " ptest"
-EXTRA_IMAGE_FEATURES = "debug-tweaks package-management ptest-pkgs"
-# testimage/ptest only work with rpm
-PACKAGE_CLASSES = "package_rpm"
+# Add the following if your distro does not enable by default (poky does)
+#DISTRO_FEATURES_append = " ptest"
 --------------- snip ---------------
 
 Also if you are running in a server without X11 session, you need to start

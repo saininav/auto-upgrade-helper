@@ -251,21 +251,6 @@ class Updater(object):
                       " conf/local.conf.")
                     exit(1)
 
-                if not "package-management" in self.base_env['EXTRA_IMAGE_FEATURES']:
-                    E(" testimage requires package-management in EXTRA_IMAGE_FEATURES"\
-                      " please add to conf/local.conf.")
-                    exit(1)
-
-                if not "ptest-pkgs" in self.base_env['EXTRA_IMAGE_FEATURES']:
-                    E(" testimage/ptest requires ptest-pkgs in EXTRA_IMAGE_FEATURES"\
-                      " please add to conf/local.conf.")
-                    exit(1)
-
-                if not "package_rpm" == self.base_env["PACKAGE_CLASSES"]:
-                    E(" testimage/ptest requires PACKAGE_CLASSES set to package_rpm"\
-                      " please add to conf/local.conf.")
-                    exit(1)
-
                 enabled = True
             else:
                 E(" testimage was enabled in upgrade-helper.conf"\
