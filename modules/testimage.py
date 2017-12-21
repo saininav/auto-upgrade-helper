@@ -256,10 +256,6 @@ class TestImage():
         return handled
 
     def run(self):
-        if len(self.pkgs_ctx) <= 0:
-            I(" Testimage was enabled but any upgrade was successful.")
-            return
-
         I(" Images will test for %s." % ', '.join(self.opts['machines']))
         for machine in self.opts['machines']:
             I("  Testing images for %s ..." % machine)
