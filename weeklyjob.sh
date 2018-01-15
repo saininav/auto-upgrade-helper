@@ -20,7 +20,7 @@ git fetch origin
 git checkout -B tmp-auh-upgrades origin/master
 
 source $poky_dir/oe-init-build-env $build_dir
-$auh_dir/upgradehelper.py all
+$auh_dir/upgradehelper.py -e all
 
 # clean up to avoid the disk filling up
 rm -rf $build_dir/tmp/
