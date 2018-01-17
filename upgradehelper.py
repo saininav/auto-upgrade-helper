@@ -276,7 +276,9 @@ class Updater(object):
 
         license_change_info = \
             "*LICENSE CHANGED* please review the %s file, update the LICENSE\n" \
-            "variable in the recipe and summarize the changes in the commit message.\n\n"
+            "variable in the recipe if needed and summarize the changes\n" \
+            "in the commit message via 'License-Update:' tag.\n" \
+            "(example: 'License-Update: copyright years updated.')\n\n"
 
         next_steps_info = \
             "Next steps:\n" \
