@@ -110,7 +110,7 @@ file:
 
 --------------- snip ---------------
 INHERIT =+ "buildhistory"
-BUILDHISTORY_COMMIT" = "1"
+BUILDHISTORY_COMMIT = "1"
 --------------- snip ---------------
 
 If upgrade is succesful buildhistory diff's are generated into
