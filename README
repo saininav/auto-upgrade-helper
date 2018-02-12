@@ -27,67 +27,8 @@ Setup
    undesirable ways.
 
 2. Prepare a configuration file, by default in $BUILDDIR/upgrade-helper/
-   upgrade-helper.conf, as below:
-
---------------- snip ---------------
-[maintainer_override]
-# mails for recipe upgrades will go to john.doe instead of jane.doe, etc
-# see also the global_maintainer_override option
-jane.doe@doe.com=john.doe@doe.com
-johhny.bravo@bravo.com=john.doe@doe.com
-
-[settings]
-# recipes in blacklist will be skipped
-blacklist=python glibc gcc
-
-# only recipes belonging to maintainers in whitelist will be attempted
-maintainers_whitelist=jane.doe@doe.com john.doe@doe.com johhny.bravo@bravo.com
-
-# email for all recipe upgrades will go to john.doe, except those listed
-# in specific maintainer_override entries above
-global_maintainer_override=john.doe@doe.com
-
-# SMTP server
-smtp=smtp.my-server.com:25
-
-# from whom should the mails arrive
-from=upgrade.helper@my-server.com
-
-# who should get the status mail with statistics, at the end
-status_recipients=john.doe@doe.com
-
-# specify the directory where work (patches) will be saved (optional)
-#workdir=
-
-# publish url to use in statistics summary (optional)
-#publish_work_url=http://auh.somehost.com/work
-
-# clean sstate directory before upgrading
-clean_sstate=yes
-
-# clean tmp directory before upgrading
-clean_tmp=yes
-
-# Machines to test build with.
-# Append _libc-name to test with alternative C library implementations
-# e.g. qemux86_musl.
-#
-# Buildhistory and testimages will be created only for the first
-# machine in the list, as otherwise it adds enormously to AUH run time.
-machines=qemux86 qemux86_musl qemux86-64 qemuarm qemumips qemuppc
-
-# optional features
-buildhistory=no
-testimage=no
-testimage_name=image-custom # defaults to core-image-sato
-
-# to enable upgrade recipes in a layer example for meta-intel
-layer_mode=False
-layer_name=meta-intel
-layer_dir=DIR/meta-intel
-layer_machines=intel-core2-32 intel-corei7-64 intel-quark
-
---------------- snip ---------------
+   upgrade-helper.conf. A sample file is provided in AUH source tree;
+   it can be used as-is, or tweaked further.
 
 3. Enable distrodata and supply appropriate additional metadata. For
    example, you could add the following to your conf/local.conf:
@@ -99,13 +40,13 @@ INHERIT =+ "distrodata"
 WARNING: if you are using the default maintainers.inc file supplied
          with Poky (in meta-yocto) and you don't set a
          maintainers_whitelist or (global_)maintainer_override in the
-         upgrade-helper configuration as above, and you specify "all"
+         upgrade-helper configuration as above, and you specify "-e all"
          on the command line, the script will automatically send out
          emails to the default maintainers. Please be careful not to
          do this :)
 
-4. If you want to enable buildhistory (optional) you need to enable in
-upgrade-helper.conf also add the following lines to your conf/local.conf
+4. If you want to enable buildhistory (optional) you need to enable it in
+upgrade-helper.conf, and also add the following lines to your conf/local.conf
 file:
 
 --------------- snip ---------------
@@ -135,10 +76,6 @@ a vncserver example:
 $ vncserver :1
 $ export DISPLAY=:1
 
-If upgrade is succesful testimage/ptest results are generated into
-$BUILDDIR/upgrade-helper/work/recipe/ptest_recipe.log if recipe support
-ptest.
-
 (Do not remove any other inherited class in the process, e.g. distrodata).
 
 Usage
@@ -152,10 +89,18 @@ Some manual usage examples:
 * To upgrade the xmodmap recipe to a user specified version:
     $ upgrade-helper.py xmodmap -t 1.2.3
 
+* To upgrade all recipes to latest available versions, without 
+  sending any emails:
+    $ upgrade-helper.py all
+
 * To attempt to upgrade all recipes and automatically send email
   messages to maintainers for each attempted recipe as well as a
   status mail at the end, use:
-    $ upgrade-helper.py all
+    $ upgrade-helper.py -e all
+
+The results of the AUH run (patches, logs and any other relevant information)
+are then found in ${BUILDDIR}/upgrade-helper/<timestamp>. AUH will also
+create recipe update commits from successful upgrade attempts in the layer tree.
 
 If you wish to run the script on a regular basis, you can set up a cron
 job; the "weeklyjob.sh" file distributed with this project is the basis
