@@ -24,6 +24,7 @@ $auh_dir/upgradehelper.py -e all
 
 # clean up to avoid the disk filling up
 rm -rf $build_dir/tmp/
+rm -rf $build_dir/workspace/sources/*
 find $sstate_dir -atime +10 -delete
 
 popd
