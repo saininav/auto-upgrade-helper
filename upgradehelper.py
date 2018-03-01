@@ -602,9 +602,9 @@ class UniverseUpdater(Updater):
             I(" Removing sstate directory ...")
             shutil.rmtree(os.path.join(get_build_dir(), "sstate-cache"))
         if settings.get("clean_tmp", "no") == "yes" and \
-                os.path.exists(os.path.join(get_build_dir(), "tmp")):
+                os.path.exists(self.base_env['TMPDIR']):
             I(" Removing tmp directory ...")
-            shutil.rmtree(os.path.join(get_build_dir(), "tmp"))
+            shutil.rmtree(self.base_env['TMPDIR'])
 
     def _check_upstream_versions(self):
         I(" Fetching upstream version(s) ...")
@@ -711,7 +711,7 @@ class UniverseUpdater(Updater):
 
     def _get_packages_to_upgrade(self, packages=None):
         self._check_upstream_versions()
-        last_checkpkg_file = os.path.realpath(get_build_dir() + "/tmp/log/checkpkg.csv")
+        last_checkpkg_file = os.path.realpath(self.base_env['TMPDIR'] + "/log/checkpkg.csv")
 
         pkgs_list = []
         for pkg in self._parse_checkpkg_file(last_checkpkg_file):
