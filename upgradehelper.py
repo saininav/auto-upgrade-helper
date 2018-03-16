@@ -376,8 +376,12 @@ class Updater(object):
             else:
                 I(" %s: Save patch in directory: %s." %
                     (pkg_ctx['PN'], pkg_ctx['workdir']))
-            if pkg_ctx['error'] is not None:
+            revert_policy = settings.get('commit_revert_policy', 'failed_to_build')
+            if (pkg_ctx['error'] is not None and revert_policy == 'failed_to_build'):
                 I("Due to build errors, the commit will also be reverted to avoid cascading upgrade failures.")
+                self.git.revert("HEAD")
+            elif revert_policy == 'all':
+                I("The commit will be reverted to follow the policy set in the configuration file.")
                 self.git.revert("HEAD")
         except Error as e:
             msg = ''
