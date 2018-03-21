@@ -564,17 +564,6 @@ class UniverseUpdater(Updater):
                 E(" -t is only supported when upgrade one recipe\n")
                 exit(1)
 
-        # read history file
-        self.history_file = os.path.join(get_build_dir(), "upgrade-helper", "history.uh")
-        self.history = dict()
-        if os.path.exists(self.history_file):
-            with open(self.history_file) as history_file:
-                for line in history_file:
-                    line = line.strip()
-                    self.history[line.split(',')[0]] = [line.split(',')[1],
-                                                        line.split(',')[2],
-                                                        line.split(',')[3],
-                                                        line.split(',')[4]]
     def _get_recipes_by_layer(self):
         recipes = []
 
@@ -689,21 +678,6 @@ class UniverseUpdater(Updater):
                         (pn, maintainer))
                 return False
 
-        if pn in self.history:
-            # did we already try this version?
-            if next_ver == self.history[pn][0]:
-                retry_delta = \
-                    date.toordinal(date.today()) - \
-                    date.toordinal(datetime.strptime(self.history[pn][2], '%Y-%m-%d'))
-                # retry recipes that had fetch errors or other errors after
-                # more than 30 days
-                if (self.history[pn][3] == str(FetchError()) or
-                        self.history[pn][3] == str(Error())) and retry_delta > 30:
-                    return True
-
-                D(" Skipping upgrade of %s: is in history and not 30 days passed" % pn)
-                return False
-
         # drop native/cross/cross-canadian recipes. We deal with native
         # when upgrading the main recipe but we keep away of cross* pkgs...
         # for now
@@ -727,22 +701,8 @@ class UniverseUpdater(Updater):
 
         return pkgs_list
 
-    def _update_history(self, pn, new_ver, maintainer, upgrade_status):
-        with open(self.history_file + ".tmp", "w+") as tmp_file:
-            if os.path.exists(self.history_file):
-                with open(self.history_file) as history:
-                    for line in history:
-                        if not line.startswith(pn):
-                            tmp_file.write(line)
-            tmp_file.write(pn + "," + new_ver + "," + maintainer +
-                           "," + date.isoformat(date.today()) + "," +
-                           upgrade_status + "\n")
-        os.rename(self.history_file + ".tmp", self.history_file)
-
     def pkg_upgrade_handler(self, pkg_ctx):
         super(UniverseUpdater, self).pkg_upgrade_handler(pkg_ctx)
-        self._update_history(pkg_ctx['PN'], pkg_ctx['NPV'], pkg_ctx['MAINTAINER'],
-                self._get_status_msg(pkg_ctx['error']))
 
     def run(self):
         self._prepare()
