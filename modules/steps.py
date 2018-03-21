@@ -82,6 +82,10 @@ def devtool_upgrade(devtool, bb, git, opts, pkg_ctx):
 
     try:
         devtool_output = devtool.upgrade(pkg_ctx['PN'], pkg_ctx['NPV'], pkg_ctx['NSRCREV'])
+        D(" 'devtool upgrade' printed:\n%s" %(devtool_output))
+        # If devtool failed to rebase patches, it does not fail, but we should
+        if 'conflict' in devtool_output:
+            raise DevtoolError("Running 'devtool upgrade' for recipe %s failed." %(pkg_ctx['PN']), devtool_output)
     except DevtoolError as e1:
         try:
             devtool_output = devtool.reset(pkg_ctx['PN'])
@@ -96,7 +100,6 @@ def devtool_upgrade(devtool, bb, git, opts, pkg_ctx):
         with open(os.path.join(pkg_ctx['workdir'], pkg_ctx['license_diff_fn']), 'wb') as f:
             f.write(b"".join(license_diff_info))
 
-    D(" 'devtool upgrade' printed:\n%s" %(devtool_output))
 
 def _compile(bb, pkg, machine, workdir):
         try:
