@@ -59,6 +59,22 @@ from statistics import Statistics
 from steps import upgrade_steps
 from testimage import TestImage
 
+if not os.getenv('BUILDDIR', False):
+    E(" You must source oe-init-build-env before running this script!\n")
+    E(" It is recommended to create a fresh build directory with it:\n")
+    E(" $ . oe-init-build-env build-auh\n")
+    exit(1)
+
+import shutil
+# Use the location of devtool to find scriptpath and hence bb/oe libs
+scripts_path = os.path.abspath(os.path.dirname(shutil.which("devtool")))
+sys.path = sys.path + [scripts_path + '/lib']
+import scriptpath
+scriptpath.add_bitbake_lib_path()
+scriptpath.add_oe_lib_path()
+
+import oe.recipeutils
+
 help_text = """Usage examples:
 * To upgrade xmodmap recipe to the latest available version:
     $ upgrade-helper.py xmodmap
@@ -599,59 +615,6 @@ class UniverseUpdater(Updater):
             I(" Removing tmp directory ...")
             shutil.rmtree(self.base_env['TMPDIR'])
 
-    def _check_upstream_versions(self):
-        I(" Fetching upstream version(s) ...")
-
-        if self.recipes:
-            recipe = " ".join(self.recipes)
-        else:
-            recipe = 'universe'
-
-        try:
-            self.bb.checkpkg(recipe)
-        except Error as e:
-            for line in e.stdout.split('\n'):
-                if line.find("ERROR: Task do_checkpkg does not exist") != -1:
-                    C(" \"distrodata.bbclass\" not inherited. Consider adding "
-                      "the following to your local.conf:\n\n"
-                      "INHERIT =+ \"distrodata\"\n")
-                    exit(1)
-
-    def _parse_checkpkg_file(self, file_path):
-        import csv
-
-        pkgs_list = []
-
-        with open(file_path, "r") as f:
-            reader = csv.reader(f, delimiter='\t')
-            for row in reader:
-                if reader.line_num == 1: # skip header line
-                    continue
-
-                pn = row[0]
-                cur_ver = row[1]
-                if self.args.to_version:
-                    next_ver = self.args.to_version
-                else:
-                    next_ver = row[2]
-                status = row[11]
-                revision = row[12]
-                maintainer = row[14]
-                no_upgrade_reason = row[15]
-
-                if status == 'UPDATE' and not no_upgrade_reason:
-                    pkgs_list.append((pn, cur_ver, next_ver, maintainer, revision))
-                else:
-                    if no_upgrade_reason:
-                        I(" Skip package %s (status = %s, current version = %s," \
-                            " next version = %s, no upgrade reason = %s)" %
-                            (pn, status, cur_ver, next_ver, no_upgrade_reason))
-                    else:
-                        I(" Skip package %s (status = %s, current version = %s," \
-                            " next version = %s)" %
-                            (pn, status, cur_ver, next_ver))
-        return pkgs_list
-
     # checks if maintainer is in whitelist and that the recipe itself is not
     # blacklisted: python, gcc, etc. Also, check the history if the recipe
     # hasn't already been tried
@@ -688,16 +651,31 @@ class UniverseUpdater(Updater):
         return True
 
     def _get_packages_to_upgrade(self, packages=None):
-        self._check_upstream_versions()
-        last_checkpkg_file = os.path.realpath(self.base_env['TMPDIR'] + "/log/checkpkg.csv")
+
+        pkgs = oe.recipeutils.get_recipe_upgrade_status(self.recipes)
 
         pkgs_list = []
-        for pkg in self._parse_checkpkg_file(last_checkpkg_file):
-            # Always do the upgrade if recipes are specified
-            if self.recipes and pkg[0] in self.recipes:
-                pkgs_list.append(pkg)
-            elif self._pkg_upgradable(pkg[0], pkg[2], pkg[3]):
-                pkgs_list.append(pkg)
+        for pkg in pkgs:
+            pn, status, cur_ver, next_ver, maintainer, revision, no_upgrade_reason = pkg
+
+            if self.args.to_version:
+                 next_ver = self.args.to_version
+
+            if status == 'UPDATE' and not no_upgrade_reason:
+                # Always do the upgrade if recipes are specified
+                if self.recipes and pn in self.recipes:
+                    pkgs_list.append((pn, cur_ver, next_ver, maintainer, revision))
+                elif self._pkg_upgradable(pn, next_ver, maintainer):
+                    pkgs_list.append((pn, cur_ver, next_ver, maintainer, revision))
+            else:
+                if no_upgrade_reason:
+                    I(" Skip package %s (status = %s, current version = %s," \
+                        " next version = %s, no upgrade reason = %s)" %
+                         (pn, status, cur_ver, next_ver, no_upgrade_reason))
+                else:
+                    I(" Skip package %s (status = %s, current version = %s," \
+                        " next version = %s)" %
+                        (pn, status, cur_ver, next_ver))
 
         return pkgs_list
 
@@ -716,11 +694,6 @@ if __name__ == "__main__":
     global settings
     global maintainer_override
 
-    if not os.getenv('BUILDDIR', False):
-        E(" You must source oe-init-build-env before running this script!\n")
-        E(" It is recommended to create a fresh build directory with it:\n")
-        E(" $ . oe-init-build-env build-auh\n")
-        exit(1)
 
     devnull = open(os.devnull, 'wb')
     if subprocess.call(["git", "config", "user.name"], stdout=devnull,stderr=devnull) or \
