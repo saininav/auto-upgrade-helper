@@ -30,13 +30,6 @@ Setup
    upgrade-helper.conf. A sample file is provided in AUH source tree;
    it can be used as-is, or tweaked further.
 
-3. Enable distrodata and supply appropriate additional metadata. For
-   example, you could add the following to your conf/local.conf:
-
---------------- snip ---------------
-INHERIT =+ "distrodata"
---------------- snip ---------------
-
 WARNING: if you are using the default maintainers.inc file supplied
          with Poky (in meta-yocto) and you don't set a
          maintainers_whitelist or (global_)maintainer_override in the
@@ -57,7 +50,7 @@ BUILDHISTORY_COMMIT = "1"
 If upgrade is succesful buildhistory diff's are generated into
 $BUILDDIR/upgrade-helper/work/recipe/buildhistory-diff.txt.
 
-(Do not remove any other inherited class in the process, e.g. distrodata).
+(Do not remove any other inherited class in the process).
 
 5. If you want to enable testimage (optional) you need to enable in
 upgrade-helper.conf also add the following lines to your conf/local.conf
@@ -76,7 +69,7 @@ a vncserver example:
 $ vncserver :1
 $ export DISPLAY=:1
 
-(Do not remove any other inherited class in the process, e.g. distrodata).
+(Do not remove any other inherited class in the process).
 
 Usage
 -----
