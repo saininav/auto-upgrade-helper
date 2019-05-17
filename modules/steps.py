@@ -34,9 +34,9 @@ from errors import *
 from buildhistory import BuildHistory
 
 def load_env(devtool, bb, git, opts, pkg_ctx):
-    pkg_ctx['env'] = bb.env(pkg_ctx['PN'])
     pkg_ctx['workdir'] = os.path.join(pkg_ctx['base_dir'], pkg_ctx['PN'])
     os.mkdir(pkg_ctx['workdir'])
+    pkg_ctx['env'] = bb.env(pkg_ctx['PN'])
     pkg_ctx['recipe_dir'] = os.path.dirname(pkg_ctx['env']['FILE'])
 
     if pkg_ctx['env']['PV'] == pkg_ctx['NPV']:
