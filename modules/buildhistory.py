@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: GPL-2.0-or-later
 # vim: set ts=4 sw=4 et:
 #
 # Copyright (c) 2015 Intel Corporation
