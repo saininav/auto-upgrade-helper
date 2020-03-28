@@ -112,6 +112,9 @@ def _compile(bb, pkg, machine, workdir):
                 # version going backwards is not a real error
                 if re.match(".* went backwards which would break package feeds .*", line):
                     break
+                # 'not in COMPATIBLE_HOST/MACHINE is not a real error
+                if re.match(".*not in COMPATIBLE.*", line):
+                    break
             else:
                 raise CompilationError()
 
