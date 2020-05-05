@@ -287,9 +287,8 @@ class Updater(object):
     # this function will be called at the end of each recipe upgrade
     def pkg_upgrade_handler(self, pkg_ctx):
         mail_header = \
-            "Hello,\n\nYou are receiving this email because you are the maintainer\n" \
-            "of *%s* recipe and this is to let you know that the automatic attempt\n" \
-            "to upgrade the recipe to *%s* has %s.\n\n"
+            "Hello,\n\nthis email is a notification from the Auto Upgrade Helper\n" \
+            "that the automatic attempt to upgrade the recipe *%s* to *%s* has %s.\n\n"
 
         license_change_info = \
             "*LICENSE CHANGED* please review the %s file, update the LICENSE\n" \
