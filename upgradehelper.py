@@ -321,8 +321,8 @@ class Updater(object):
             to_addr = pkg_ctx['MAINTAINER']
 
         cc_addr = None
-        if "status_recipients" in settings:
-            cc_addr = settings["status_recipients"].split()
+        if "cc_recipients" in settings:
+            cc_addr = settings["cc_recipients"].split()
 
         newversion = pkg_ctx['NPV'] if not pkg_ctx['NPV'].endswith("new-commits-available") else pkg_ctx['NSRCREV']
         subject = "[AUH] " + pkg_ctx['PN'] + ": upgrading to " + newversion
