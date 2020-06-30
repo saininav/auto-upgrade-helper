@@ -103,6 +103,8 @@ class Email(object):
         try:
             smtp = SMTP(self.smtp_host, self.smtp_port)
             smtp.sendmail(self.from_addr, to_addr, msg_text)
+            if cc_addr is not None:
+                smtp.sendmail(self.from_addr, cc_addr, msg_text)
             smtp.close()
         except Exception as e:
             E("Could not send email: %s" % str(e))
