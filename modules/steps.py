@@ -115,6 +115,9 @@ def _compile(bb, pkg, machine, workdir):
                 # 'not in COMPATIBLE_HOST/MACHINE is not a real error
                 if re.match(".*not in COMPATIBLE.*", line):
                     break
+                # 'Nothing PROVIDES' is not a real error
+                if re.match(".*Nothing PROVIDES.*", line):
+                    break
             else:
                 raise CompilationError()
 
